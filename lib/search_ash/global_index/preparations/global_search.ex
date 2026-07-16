@@ -21,8 +21,10 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
         do: SearchCore.tsquery(term, language, prefix: true),
         else: ""
 
+    states = Ash.Query.get_argument(query, :states) || Info.visible_states(resource)
+
     query
-    |> filter_states(Info.visible_states(resource))
+    |> filter_states(states)
     |> maybe_filter(search_text_attribute, tsquery)
     |> maybe_rank(tsquery)
   end

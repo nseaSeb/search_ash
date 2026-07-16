@@ -6,11 +6,12 @@ spark_locals_without_parens = [
   index_name: 1,
   label_field: 1,
   language_attribute: 1,
+  on_destroy: 1,
   prefix?: 1,
   rank?: 1,
   search_text_attribute: 1,
   source_type: 1,
-  state_attribute: 1,
+  state: 1,
   visible_states: 1
 ]
 

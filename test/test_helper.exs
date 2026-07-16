@@ -65,4 +65,16 @@ CREATE TABLE test_products (
 )
 """)
 
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_invoices", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_invoices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  number text,
+  deleted_at timestamptz,
+  language text NOT NULL
+)
+""")
+
 ExUnit.start()

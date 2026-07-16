@@ -90,6 +90,9 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
       {:ok, language_arg} =
         Ash.Resource.Builder.build_action_argument(:language, :atom, allow_nil?: true)
 
+      {:ok, states_arg} =
+        Ash.Resource.Builder.build_action_argument(:states, {:array, :atom}, allow_nil?: true)
+
       {:ok, preparation} =
         Ash.Resource.Builder.build_preparation(
           SearchAsh.GlobalIndex.Preparations.GlobalSearch,
@@ -98,7 +101,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
 
       {:ok, action} =
         Ash.Resource.Builder.build_action(:read, action_name,
-          arguments: [query_arg, language_arg],
+          arguments: [query_arg, language_arg, states_arg],
           preparations: [preparation]
         )
 

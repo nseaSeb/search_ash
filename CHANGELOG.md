@@ -19,8 +19,11 @@ Global search across resources (Option B):
 - `SearchAsh.GlobalIndex` — turns a resource into a unified cross-entity search index
   (generated columns, tenant-aware identity, GIN index, `:upsert` + ranked
   `:global_search` actions returning `(source_type, source_id, state, label, search_rank)`).
-- `SearchAsh.Source` — mirrors a resource into an index on create/update/destroy;
-  `state_attribute` drives soft-delete visibility.
+- `SearchAsh.Source` — mirrors a resource into an index on create/update/destroy.
+  Flexible soft-delete: `state` derives the index state from an attribute or a
+  `record -> atom` function (e.g. `deleted_at`), and `on_destroy` is `:remove` (hard
+  delete) or `{:set_state, s}` (keep, for AshArchival-style destroy). `:global_search`
+  takes a `states` argument to query several groups (e.g. active + archived).
 - `SearchAsh.reindex/2` — backfills existing rows (per tenant).
 
 Note: `update` actions on a search-enabled or source resource must set

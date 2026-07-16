@@ -92,13 +92,26 @@ the unified-index extensions:
     source_type :bon_de_commande
     fields [:numero, :client_nom, :description]
     label_field :numero
-    state_attribute :status   # optional — its value becomes the index `state`
+
+    # Soft delete, your way:
+    state fn r -> if r.deleted_at, do: :deleted, else: :active end  # or: state :status
+    on_destroy {:set_state, :archived}   # or :remove (default, hard delete)
   end
   ```
 
-  Create/update upserts a stemmed document; destroy removes it. A **soft delete** that
-  sets `state_attribute` to a non-visible state (e.g. `:archived`) hides the row from
-  `:global_search` while keeping it. `update` actions need `require_atomic? false`.
+  Create/update upserts a stemmed document; destroy either removes it (`on_destroy:
+  :remove`, default) or keeps it with a state (`{:set_state, s}`, for soft-delete via a
+  destroy such as AshArchival). `state` derives the index `state` from the record — an
+  attribute name to copy, or a `record -> atom` function (e.g. mapping `deleted_at`).
+  `update` actions need `require_atomic? false`.
+
+  `:global_search` returns only `visible_states` (default `[:active]`) but takes a
+  `states` argument to override it — so you can query, say, `[:active, :archived]` and
+  **group results by `state`** in the UI:
+
+  ```elixir
+  MyApp.Search.global_search!("dupont", :french, %{states: [:active, :archived]}, tenant: "org_42")
+  ```
 
 Then one query, ranked, tenant-isolated:
 

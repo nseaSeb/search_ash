@@ -58,12 +58,21 @@ defmodule SearchAsh.Source do
         required: false,
         doc: "Attribute used as the human-readable label stored in the index."
       ],
-      state_attribute: [
-        type: :atom,
+      state: [
+        type: {:or, [:atom, {:fun, 1}]},
         required: false,
         doc:
-          "Optional atom attribute whose value is copied into the index `state` " <>
-            "(defaults to `:active`). Use it to drive soft-delete visibility."
+          "How to derive the index `state` (defaults to `:active`). Either an atom " <>
+            "attribute name whose value is copied, or a 1-arity function `record -> atom` " <>
+            "(e.g. `fn r -> if r.deleted_at, do: :deleted, else: :active end`)."
+      ],
+      on_destroy: [
+        type: {:or, [{:literal, :remove}, {:tuple, [{:literal, :set_state}, :atom]}]},
+        default: :remove,
+        doc:
+          "What to do with the index row when the source is destroyed: `:remove` (default, " <>
+            "for hard delete) or `{:set_state, :archived}` to keep it with a state instead " <>
+            "(for soft-delete via a destroy action, e.g. AshArchival)."
       ]
     ]
   }

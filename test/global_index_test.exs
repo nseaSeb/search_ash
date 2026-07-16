@@ -8,12 +8,20 @@ defmodule SearchAsh.GlobalIndexTest do
   alias SearchAsh.Test.{Domain, Product, Repo, SearchDocument}
 
   setup do
-    Ecto.Adapters.SQL.query!(Repo, "TRUNCATE test_products, test_search_documents", [])
+    Ecto.Adapters.SQL.query!(
+      Repo,
+      "TRUNCATE test_products, test_invoices, test_search_documents",
+      []
+    )
+
     :ok
   end
 
   defp create(attrs, tenant), do: Domain.create_product!(attrs, tenant: tenant)
   defp gsearch(query, tenant), do: Domain.global_search!(query, :french, tenant: tenant)
+
+  defp gsearch(query, tenant, states),
+    do: Domain.global_search!(query, :french, %{states: states}, tenant: tenant)
 
   test "creating a source resource indexes it into the global index" do
     create(%{name: "Vis inox M6", sku: "VIS-M6"}, "a")
@@ -75,5 +83,40 @@ defmodule SearchAsh.GlobalIndexTest do
 
     assert Repo.aggregate(SearchDocument, :count) == 1
     assert [%{label: "Marteau"}] = gsearch("marteau", "a")
+  end
+
+  # --- flexible soft-delete (state derived by a function, on_destroy keeps the row) ---
+
+  test "state derived by a function: soft-deleting (deleted_at) hides but keeps the row" do
+    invoice = Domain.create_invoice!(%{number: "BC-2024-017"}, tenant: "a")
+    assert [%{state: :active}] = gsearch("bc", "a")
+
+    Domain.update_invoice!(invoice, %{deleted_at: DateTime.utc_now()}, tenant: "a")
+
+    assert [] = gsearch("bc", "a")
+    assert [%{state: :deleted}] = gsearch("bc", "a", [:deleted])
+    assert Repo.aggregate(SearchDocument, :count) == 1
+  end
+
+  test "on_destroy {:set_state, :archived}: destroy keeps the row archived" do
+    invoice = Domain.create_invoice!(%{number: "BC-2024-018"}, tenant: "a")
+    assert Repo.aggregate(SearchDocument, :count) == 1
+
+    Domain.destroy_invoice!(invoice, tenant: "a")
+
+    assert [] = gsearch("bc", "a")
+    assert [%{state: :archived}] = gsearch("bc", "a", [:archived])
+    assert Repo.aggregate(SearchDocument, :count) == 1
+  end
+
+  test "the states argument returns several groups (active + archived) for the UI" do
+    Domain.create_invoice!(%{number: "BC-actif"}, tenant: "a")
+    to_archive = Domain.create_invoice!(%{number: "BC-archive"}, tenant: "a")
+    Domain.destroy_invoice!(to_archive, tenant: "a")
+
+    labels = fn results -> results |> Enum.map(& &1.label) |> Enum.sort() end
+
+    assert ["BC-actif"] = labels.(gsearch("bc", "a"))
+    assert ["BC-actif", "BC-archive"] = labels.(gsearch("bc", "a", [:active, :archived]))
   end
 end
