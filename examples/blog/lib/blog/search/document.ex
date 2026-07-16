@@ -16,6 +16,11 @@ defmodule Blog.Search.Document do
     domain: Blog.Search,
     data_layer: AshPostgres.DataLayer
 
+  # Shown as this resource's label in the GreenAsh main menu.
+  resource do
+    description "Recherche globale — factures, clients, produits (rankée)"
+  end
+
   postgres do
     table "search_documents"
     repo Blog.Repo
@@ -46,6 +51,7 @@ defmodule Blog.Search.Document do
     end
 
     read :global_search do
+      description "Rechercher (query + language) — résultats rankés"
       # Optional so the action is usable from a list UI (e.g. the GreenAsh filter form):
       # a blank query lists everything, a filled query filters + ranks.
       argument :query, :string, allow_nil?: true, default: ""
