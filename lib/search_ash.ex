@@ -77,6 +77,13 @@ defmodule SearchAsh do
         doc:
           "Language used to stem the query when the `:search` action's `language` " <>
             "argument is omitted (e.g. from a generic list UI)."
+      ],
+      prefix?: [
+        type: :boolean,
+        default: true,
+        doc:
+          "Match the last-typed token as a prefix (search-as-you-type): a query " <>
+            "\"boulan\" matches \"boulangerie\". Set false for exact stemmed matching."
       ]
     ]
   }

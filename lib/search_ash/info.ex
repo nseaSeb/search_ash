@@ -22,4 +22,7 @@ defmodule SearchAsh.Info do
   @doc "Language used to stem the query when the search argument is omitted."
   def default_language(resource),
     do: Extension.get_opt(resource, [:search], :default_language, :french)
+
+  @doc "Whether the search matches the query tokens as prefixes (search-as-you-type)."
+  def prefix?(resource), do: Extension.get_opt(resource, [:search], :prefix?, true)
 end

@@ -15,7 +15,10 @@ defmodule SearchAsh.Preparations.Search do
     language = normalize_language(Ash.Query.get_argument(query, :language), resource)
     # Branch on the *computed* tsquery: a short (< min_length) or all-stopwords query
     # yields no tokens ("") even when the term is non-blank.
-    tsquery = if is_binary(term), do: SearchCore.tsquery(term, language), else: ""
+    tsquery =
+      if is_binary(term),
+        do: SearchCore.tsquery(term, language, prefix: SearchAsh.Info.prefix?(resource)),
+        else: ""
 
     if tsquery == "" do
       # Nothing searchable → no filter, so a list UI shows all rows before you type.

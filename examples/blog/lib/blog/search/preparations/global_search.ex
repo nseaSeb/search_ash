@@ -14,7 +14,8 @@ defmodule Blog.Search.Preparations.GlobalSearch do
     language = normalize_language(Ash.Query.get_argument(query, :language))
     # Branch on the *computed* tsquery, not the raw term: a short (< min_length) or
     # all-stopwords query yields no tokens ("") even though the term is non-blank.
-    tsquery = if is_binary(term), do: SearchCore.tsquery(term, language), else: ""
+    # prefix: true → "boulan" matches "boulangerie" (search-as-you-type).
+    tsquery = if is_binary(term), do: SearchCore.tsquery(term, language, prefix: true), else: ""
 
     if tsquery == "" do
       # Nothing searchable → list everything (the list UI shows all rows before typing).
