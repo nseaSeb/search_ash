@@ -46,8 +46,10 @@ defmodule Blog.Search.Document do
     end
 
     read :global_search do
-      argument :query, :string, allow_nil?: false
-      argument :language, :atom, allow_nil?: false
+      # Optional so the action is usable from a list UI (e.g. the GreenAsh filter form):
+      # a blank query lists everything, a filled query filters + ranks.
+      argument :query, :string, allow_nil?: true, default: ""
+      argument :language, :atom, allow_nil?: true, default: :french
       prepare Blog.Search.Preparations.GlobalSearch
     end
   end

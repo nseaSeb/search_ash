@@ -11,14 +11,20 @@ defmodule Blog.Search.Preparations.GlobalSearch do
   @impl true
   def prepare(query, _opts, _context) do
     term = Ash.Query.get_argument(query, :query)
-    language = Ash.Query.get_argument(query, :language)
-    tsquery = SearchCore.tsquery(term, language)
+    language = Ash.Query.get_argument(query, :language) || :french
 
-    query
-    |> Ash.Query.filter(
-      fragment("to_tsvector('simple', search_text) @@ to_tsquery('simple', ?)", ^tsquery)
-    )
-    |> Ash.Query.load(rank: %{tsquery: tsquery})
-    |> Ash.Query.sort(rank: {%{tsquery: tsquery}, :desc})
+    if is_binary(term) and String.trim(term) != "" do
+      tsquery = SearchCore.tsquery(term, language)
+
+      query
+      |> Ash.Query.filter(
+        fragment("to_tsvector('simple', search_text) @@ to_tsquery('simple', ?)", ^tsquery)
+      )
+      |> Ash.Query.load(rank: %{tsquery: tsquery})
+      |> Ash.Query.sort(rank: {%{tsquery: tsquery}, :desc})
+    else
+      # Blank query: list everything (the list UI shows all rows before you type).
+      query
+    end
   end
 end
