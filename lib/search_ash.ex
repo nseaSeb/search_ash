@@ -70,6 +70,13 @@ defmodule SearchAsh do
         type: :atom,
         default: :search,
         doc: "Name of the generated read action."
+      ],
+      default_language: [
+        type: :atom,
+        default: :french,
+        doc:
+          "Language used to stem the query when the `:search` action's `language` " <>
+            "argument is omitted (e.g. from a generic list UI)."
       ]
     ]
   }

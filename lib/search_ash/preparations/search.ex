@@ -9,18 +9,25 @@ defmodule SearchAsh.Preparations.Search do
 
   @impl true
   def prepare(query, _opts, _context) do
-    search_text_attribute = SearchAsh.Info.search_text_attribute(query.resource)
+    resource = query.resource
+    search_text_attribute = SearchAsh.Info.search_text_attribute(resource)
     term = Ash.Query.get_argument(query, :query)
-    language = Ash.Query.get_argument(query, :language)
-    tsquery = SearchCore.tsquery(term, language)
+    language = Ash.Query.get_argument(query, :language) || SearchAsh.Info.default_language(resource)
 
-    Ash.Query.filter(
-      query,
-      fragment(
-        "to_tsvector('simple', ?) @@ to_tsquery('simple', ?)",
-        ^ref(search_text_attribute),
-        ^tsquery
+    if is_binary(term) and String.trim(term) != "" do
+      tsquery = SearchCore.tsquery(term, language)
+
+      Ash.Query.filter(
+        query,
+        fragment(
+          "to_tsvector('simple', ?) @@ to_tsquery('simple', ?)",
+          ^ref(search_text_attribute),
+          ^tsquery
+        )
       )
-    )
+    else
+      # Blank query: no filter, so a list UI shows all rows before you type.
+      query
+    end
   end
 end

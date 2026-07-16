@@ -17,11 +17,18 @@ defmodule SearchAsh.Transformers.AddSearchAction do
     if action_defined?(dsl, action_name) do
       {:ok, dsl}
     else
+      default_language = Transformer.get_option(dsl, [:search], :default_language) || :french
+
+      # Optional so the action is usable from a generic list UI: a blank query lists
+      # everything, a filled query filters. `language` defaults to `:default_language`.
       {:ok, query_arg} =
-        Ash.Resource.Builder.build_action_argument(:query, :string, allow_nil?: false)
+        Ash.Resource.Builder.build_action_argument(:query, :string, allow_nil?: true, default: "")
 
       {:ok, language_arg} =
-        Ash.Resource.Builder.build_action_argument(:language, :atom, allow_nil?: false)
+        Ash.Resource.Builder.build_action_argument(:language, :atom,
+          allow_nil?: true,
+          default: default_language
+        )
 
       {:ok, preparation} =
         Ash.Resource.Builder.build_preparation(SearchAsh.Preparations.Search, [])

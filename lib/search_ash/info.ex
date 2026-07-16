@@ -18,4 +18,8 @@ defmodule SearchAsh.Info do
 
   @doc "Name of the generated read action."
   def action(resource), do: Extension.get_opt(resource, [:search], :action, :search)
+
+  @doc "Language used to stem the query when the search argument is omitted."
+  def default_language(resource),
+    do: Extension.get_opt(resource, [:search], :default_language, :french)
 end
