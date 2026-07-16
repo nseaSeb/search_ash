@@ -14,7 +14,9 @@ defmodule SearchAsh.PostgresSearchTest do
   end
 
   defp create(attrs, tenant), do: Domain.create_article!(attrs, tenant: tenant)
-  defp search(query, tenant, lang \\ :french), do: Domain.search_articles!(query, lang, tenant: tenant)
+
+  defp search(query, tenant, lang \\ :french),
+    do: Domain.search_articles!(query, lang, tenant: tenant)
 
   test "create indexes the row; a stemmed query finds it" do
     create(%{title: "Les chevaux", body: "ils mangent", language: :french}, "a")

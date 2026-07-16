@@ -4,12 +4,12 @@ defmodule SearchDemoWeb.Router do
   import GreenAsh.Router
 
   pipeline :browser do
-    plug :accepts, ["html"]
-    plug :fetch_session
-    plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    plug(:accepts, ["html"])
+    plug(:fetch_session)
+    plug(:protect_from_forgery)
+    plug(:put_secure_browser_headers)
     # Root layout that loads the LiveView JS so GreenAsh's console is interactive.
-    plug :put_root_layout, html: {SearchDemoWeb.Layouts, :root}
+    plug(:put_root_layout, html: {SearchDemoWeb.Layouts, :root})
   end
 
   scope "/" do
@@ -17,6 +17,6 @@ defmodule SearchDemoWeb.Router do
 
     # Terminal-style admin console over all configured Ash domains
     # (SearchDemo.Blog, SearchDemo.Search, SearchDemo.Sales). Dev tool only.
-    green_ash "/cli"
+    green_ash("/cli")
   end
 end

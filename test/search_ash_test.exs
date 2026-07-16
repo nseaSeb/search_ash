@@ -21,21 +21,22 @@ defmodule SearchAshTest do
     end
 
     actions do
-      defaults [:read]
+      defaults([:read])
 
       create :create do
-        accept [:title, :body, :language]
+        accept([:title, :body, :language])
       end
     end
 
     attributes do
-      uuid_primary_key :id
-      attribute :title, :string, public?: true
-      attribute :body, :string, public?: true
+      uuid_primary_key(:id)
+      attribute(:title, :string, public?: true)
+      attribute(:body, :string, public?: true)
 
-      attribute :language, :atom,
+      attribute(:language, :atom,
         public?: true,
         constraints: [one_of: [:french, :english]]
+      )
     end
   end
 
@@ -101,17 +102,17 @@ defmodule SearchAshTest do
         end
 
         calculations do
-          calculate :search_rank, :float, expr(1.0)
+          calculate(:search_rank, :float, expr(1.0))
         end
 
         actions do
-          defaults [:read]
+          defaults([:read])
         end
 
         attributes do
-          uuid_primary_key :id
-          attribute :title, :string, public?: true
-          attribute :language, :atom, public?: true, constraints: [one_of: [:french]]
+          uuid_primary_key(:id)
+          attribute(:title, :string, public?: true)
+          attribute(:language, :atom, public?: true, constraints: [one_of: [:french]])
         end
       end
     end

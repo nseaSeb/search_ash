@@ -6,14 +6,14 @@ defmodule SearchAsh.Test.Article do
     extensions: [SearchAsh]
 
   postgres do
-    table "test_articles"
-    repo SearchAsh.Test.Repo
+    table("test_articles")
+    repo(SearchAsh.Test.Repo)
   end
 
   multitenancy do
-    strategy :attribute
-    attribute :org_id
-    global? true
+    strategy(:attribute)
+    attribute(:org_id)
+    global?(true)
   end
 
   search do
@@ -22,28 +22,29 @@ defmodule SearchAsh.Test.Article do
   end
 
   actions do
-    defaults [:read]
+    defaults([:read])
 
     create :create do
-      accept [:title, :body, :language]
+      accept([:title, :body, :language])
     end
 
     update :update do
       # The search_text sync stems via a NIF, which can't run atomically in SQL.
-      require_atomic? false
-      accept [:title, :body, :language]
+      require_atomic?(false)
+      accept([:title, :body, :language])
     end
   end
 
   attributes do
-    uuid_primary_key :id
-    attribute :org_id, :string, allow_nil?: false, public?: true
-    attribute :title, :string, public?: true
-    attribute :body, :string, public?: true
+    uuid_primary_key(:id)
+    attribute(:org_id, :string, allow_nil?: false, public?: true)
+    attribute(:title, :string, public?: true)
+    attribute(:body, :string, public?: true)
 
-    attribute :language, :atom,
+    attribute(:language, :atom,
       allow_nil?: false,
       public?: true,
       constraints: [one_of: Stemmers.supported_languages()]
+    )
   end
 end

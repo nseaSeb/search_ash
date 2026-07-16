@@ -23,9 +23,7 @@ defmodule SearchDemo.Sales.Client do
       accept [:nom, :email, :notes, :language]
 
       change {SearchDemo.Sales.Changes.SyncToIndex,
-              source_type: "client",
-              fields: [:nom, :email, :notes],
-              label_field: :nom}
+              source_type: "client", fields: [:nom, :email, :notes], label_field: :nom}
     end
 
     destroy :destroy do

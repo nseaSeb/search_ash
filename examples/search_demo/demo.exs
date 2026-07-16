@@ -12,14 +12,30 @@ Repo.delete_all(Post)
 # org_a and org_b both have a French document about "chevaux"; tenant scoping must keep
 # them apart even though they'd match the same tsquery.
 posts = [
-  {"org_a", %{language: :french, title: "Les chevaux",
-              body: "J'adore regarder les chevaux qui mangent dans les prés."}},
-  {"org_a", %{language: :french, title: "Cuisine",
-              body: "Une recette de poissons grillés avec des herbes."}},
-  {"org_b", %{language: :french, title: "Chevaux de course",
-              body: "Les chevaux de course les plus rapides du monde."}},
-  {"org_b", %{language: :english, title: "Running",
-              body: "She was running fast and the connections finally worked."}}
+  {"org_a",
+   %{
+     language: :french,
+     title: "Les chevaux",
+     body: "J'adore regarder les chevaux qui mangent dans les prés."
+   }},
+  {"org_a",
+   %{
+     language: :french,
+     title: "Cuisine",
+     body: "Une recette de poissons grillés avec des herbes."
+   }},
+  {"org_b",
+   %{
+     language: :french,
+     title: "Chevaux de course",
+     body: "Les chevaux de course les plus rapides du monde."
+   }},
+  {"org_b",
+   %{
+     language: :english,
+     title: "Running",
+     body: "She was running fast and the connections finally worked."
+   }}
 ]
 
 for {org, attrs} <- posts, do: SearchDemo.Blog.create_post!(attrs, tenant: org)
@@ -34,21 +50,36 @@ check = fn label, results, expected ->
 end
 
 # Per-row language (both tenants) + stemming symmetry ("chevaux" -> "cheval").
-check.(~s|org_a FR "chevaux"|,
-  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_a"), ["Les chevaux"])
+check.(
+  ~s|org_a FR "chevaux"|,
+  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_a"),
+  ["Les chevaux"]
+)
 
-check.(~s|org_a FR "poisson grillé"|,
-  SearchDemo.Blog.search_posts!("poisson grillé", :french, tenant: "org_a"), ["Cuisine"])
+check.(
+  ~s|org_a FR "poisson grillé"|,
+  SearchDemo.Blog.search_posts!("poisson grillé", :french, tenant: "org_a"),
+  ["Cuisine"]
+)
 
-check.(~s|org_b EN "connection"|,
-  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_b"), ["Running"])
+check.(
+  ~s|org_b EN "connection"|,
+  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_b"),
+  ["Running"]
+)
 
 # Tenant isolation: the SAME query+language in each org returns only that org's rows.
-check.(~s|org_b FR "chevaux" (isolation)|,
-  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_b"), ["Chevaux de course"])
+check.(
+  ~s|org_b FR "chevaux" (isolation)|,
+  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_b"),
+  ["Chevaux de course"]
+)
 
-check.(~s|org_a cannot see org_b "connection"|,
-  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_a"), [])
+check.(
+  ~s|org_a cannot see org_b "connection"|,
+  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_a"),
+  []
+)
 
 # Confirm the generated change stemmed at write time.
 post =

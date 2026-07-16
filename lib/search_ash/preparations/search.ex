@@ -49,6 +49,16 @@ defmodule SearchAsh.Preparations.Search do
     query
     |> Ash.Query.load(search_rank: %{tsquery: tsquery})
     |> Ash.Query.sort(search_rank: {%{tsquery: tsquery}, :desc})
+    |> stable_order()
+  end
+
+  # Break ties on the primary key so equally-ranked rows keep a deterministic order
+  # (stable pagination). Appended after the rank sort.
+  defp stable_order(query) do
+    case Ash.Resource.Info.primary_key(query.resource) do
+      [] -> query
+      pkey -> Ash.Query.sort(query, Enum.map(pkey, &{&1, :asc}))
+    end
   end
 
   # Fall back to the resource's default language for anything that isn't a supported

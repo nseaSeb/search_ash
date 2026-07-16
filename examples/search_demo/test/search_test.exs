@@ -12,7 +12,13 @@ defmodule SearchDemo.SearchTest do
   alias SearchDemo.Search.Document
 
   setup do
-    for schema <- [Document, SearchDemo.Post, SearchDemo.Sales.Facture, SearchDemo.Sales.Client, SearchDemo.Sales.Produit] do
+    for schema <- [
+          Document,
+          SearchDemo.Post,
+          SearchDemo.Sales.Facture,
+          SearchDemo.Sales.Client,
+          SearchDemo.Sales.Produit
+        ] do
       Repo.delete_all(schema)
     end
 
@@ -31,8 +37,13 @@ defmodule SearchDemo.SearchTest do
     end
 
     test "tenant isolation — a query only returns the caller's rows" do
-      SearchDemo.Blog.create_post!(%{title: "A", body: "cheval", language: :french}, tenant: "org_a")
-      SearchDemo.Blog.create_post!(%{title: "B", body: "cheval", language: :french}, tenant: "org_b")
+      SearchDemo.Blog.create_post!(%{title: "A", body: "cheval", language: :french},
+        tenant: "org_a"
+      )
+
+      SearchDemo.Blog.create_post!(%{title: "B", body: "cheval", language: :french},
+        tenant: "org_b"
+      )
 
       assert [%{title: "A"}] = SearchDemo.Blog.search_posts!("cheval", :french, tenant: "org_a")
       assert [%{title: "B"}] = SearchDemo.Blog.search_posts!("cheval", :french, tenant: "org_b")
@@ -49,12 +60,19 @@ defmodule SearchDemo.SearchTest do
     end
 
     test "prefix — a partial word matches" do
-      SearchDemo.Blog.create_post!(%{title: "Boulangerie", body: "pain", language: :french}, tenant: "org_a")
-      assert [%{title: "Boulangerie"}] = SearchDemo.Blog.search_posts!("boulan", :french, tenant: "org_a")
+      SearchDemo.Blog.create_post!(%{title: "Boulangerie", body: "pain", language: :french},
+        tenant: "org_a"
+      )
+
+      assert [%{title: "Boulangerie"}] =
+               SearchDemo.Blog.search_posts!("boulan", :french, tenant: "org_a")
     end
 
     test "a query in the wrong language does not match" do
-      SearchDemo.Blog.create_post!(%{title: "Chevaux", body: "chevaux", language: :french}, tenant: "org_a")
+      SearchDemo.Blog.create_post!(%{title: "Chevaux", body: "chevaux", language: :french},
+        tenant: "org_a"
+      )
+
       assert [] = SearchDemo.Blog.search_posts!("running", :english, tenant: "org_a")
     end
   end
@@ -62,8 +80,11 @@ defmodule SearchDemo.SearchTest do
   describe "global search — SearchDemo.Search.Document (Option B)" do
     setup do
       SearchDemo.Sales.create_facture!(
-        %{numero: "F-001", client_nom: "Ferme des Chevaux",
-          description: "Foin pour les chevaux ; un cheval de trait."},
+        %{
+          numero: "F-001",
+          client_nom: "Ferme des Chevaux",
+          description: "Foin pour les chevaux ; un cheval de trait."
+        },
         tenant: "org_a"
       )
 
@@ -94,7 +115,11 @@ defmodule SearchDemo.SearchTest do
 
     test "2/ destroying an object removes it from the index" do
       count_before = Repo.aggregate(Document, :count)
-      [facture] = SearchDemo.Sales.Facture |> Ash.Query.filter(numero == "F-001") |> Ash.read!(tenant: "org_a")
+
+      [facture] =
+        SearchDemo.Sales.Facture
+        |> Ash.Query.filter(numero == "F-001")
+        |> Ash.read!(tenant: "org_a")
 
       SearchDemo.Sales.destroy_facture!(facture, tenant: "org_a")
 

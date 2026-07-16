@@ -26,7 +26,8 @@ config :search_demo, SearchDemoWeb.Endpoint,
   live_view: [signing_salt: "greenashsalt"],
   render_errors: [formats: [html: SearchDemoWeb.ErrorHTML], layout: false],
   pubsub_server: SearchDemo.PubSub
-  # No `server: true`: `mix phx.server` starts the web server; plain `mix run <script>`
-  # (the demos) does not, so it never tries to bind the port.
+
+# No `server: true`: `mix phx.server` starts the web server; plain `mix run <script>`
+# (the demos) does not, so it never tries to bind the port.
 
 config :phoenix, :json_library, Jason

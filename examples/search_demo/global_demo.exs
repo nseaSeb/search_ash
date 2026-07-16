@@ -9,14 +9,22 @@ alias SearchDemo.Search
 alias SearchDemo.Search.Document
 alias SearchDemo.Repo
 
-for schema <- [Document, SearchDemo.Sales.Facture, SearchDemo.Sales.Client, SearchDemo.Sales.Produit] do
+for schema <- [
+      Document,
+      SearchDemo.Sales.Facture,
+      SearchDemo.Sales.Client,
+      SearchDemo.Sales.Produit
+    ] do
   Repo.delete_all(schema)
 end
 
 # --- org_a : several cheval-related records (+ one unrelated) ---
 Sales.create_facture!(
-  %{numero: "F-001", client_nom: "Ferme des Chevaux",
-    description: "Livraison de foin pour les chevaux ; un cheval de trait supplémentaire."},
+  %{
+    numero: "F-001",
+    client_nom: "Ferme des Chevaux",
+    description: "Livraison de foin pour les chevaux ; un cheval de trait supplémentaire."
+  },
   tenant: "org_a"
 )
 
@@ -68,11 +76,19 @@ check = fn label, cond -> IO.puts("[#{if cond, do: "OK  ", else: "FAIL"}] #{labe
 check.("org_a returns 3 cheval docs (facture, client, produit)", length(a) == 3)
 check.("org_a results are ALL tenant org_a", Enum.all?(a, &(&1.org_id == "org_a")))
 check.("unrelated F-002 is absent", "F-002" not in Enum.map(a, & &1.label))
-check.("org_b's 'Chevaux de bois' never leaks into org_a", "Chevaux de bois" not in Enum.map(a, & &1.label))
+
+check.(
+  "org_b's 'Chevaux de bois' never leaks into org_a",
+  "Chevaux de bois" not in Enum.map(a, & &1.label)
+)
+
 check.("org_b returns only its own 1 doc", length(b) == 1 and hd(b).org_id == "org_b")
 check.("results are ranked (rank descending)", a == Enum.sort_by(a, & &1.rank, :desc))
-check.("every result carries (source_type, source_id) to link the object",
-  Enum.all?(a, &(&1.source_type != nil and &1.source_id != nil)))
+
+check.(
+  "every result carries (source_type, source_id) to link the object",
+  Enum.all?(a, &(&1.source_type != nil and &1.source_id != nil))
+)
 
 # --- deletion: destroying a source object removes it from the index ---
 Sales.destroy_produit!(produit_a, tenant: "org_a")
@@ -80,7 +96,12 @@ a_after = Search.global_search!("chevaux", :french, tenant: "org_a")
 
 IO.puts("")
 show.(~s|after destroying produit "Selle pour cheval" — org_a:|, a_after)
-check.("destroyed produit is gone from the index", "Selle pour cheval" not in Enum.map(a_after, & &1.label))
+
+check.(
+  "destroyed produit is gone from the index",
+  "Selle pour cheval" not in Enum.map(a_after, & &1.label)
+)
+
 check.("the other 2 docs remain", length(a_after) == 2)
 
 IO.puts("EXPLAIN (index usage + tenant filter):")
