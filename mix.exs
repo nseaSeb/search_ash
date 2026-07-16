@@ -40,7 +40,8 @@ defmodule SearchAsh.MixProject do
       {:search_core, path: "../search_core"},
       {:ash, "~> 3.29"},
       {:ash_postgres, "~> 2.10"},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false}
     ]
   end
 

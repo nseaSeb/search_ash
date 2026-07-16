@@ -77,6 +77,8 @@ Postgres-backed test suite.
 
 ## Notes
 
+- **Requires the AshPostgres data layer.** Search is built on Postgres `tsvector`/`ts_rank`,
+  so the generated `:search` action only works on `AshPostgres.DataLayer` resources.
 - **Update actions need `require_atomic? false`.** The keep-in-sync change stems via a
   NIF, which can't run inside an atomic SQL update, so any `update` action on a
   search-enabled resource must set `require_atomic? false`.
