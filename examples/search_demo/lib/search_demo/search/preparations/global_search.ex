@@ -30,6 +30,9 @@ defmodule SearchDemo.Search.Preparations.GlobalSearch do
     end
   end
 
-  defp normalize_language(lang) when is_atom(lang) and not is_nil(lang), do: lang
-  defp normalize_language(_), do: :french
+  # Fall back to :french for anything that isn't a supported Stemmers language, so an
+  # unknown language argument never crashes the stemmer.
+  defp normalize_language(lang) do
+    if is_atom(lang) and Stemmers.supported?(lang), do: lang, else: :french
+  end
 end

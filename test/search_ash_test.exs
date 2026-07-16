@@ -86,4 +86,34 @@ defmodule SearchAshTest do
     assert article.search_text =~ "cheval"
     refute article.search_text =~ "chevaux"
   end
+
+  test "a conflicting :search_rank calculation (with rank? on) raises a clear DSL error" do
+    assert_raise Spark.Error.DslError, ~r/search_rank/, fn ->
+      defmodule Conflicting do
+        use Ash.Resource,
+          domain: SearchAshTest.Domain,
+          validate_domain_inclusion?: false,
+          data_layer: Ash.DataLayer.Ets,
+          extensions: [SearchAsh]
+
+        search do
+          fields [:title]
+        end
+
+        calculations do
+          calculate :search_rank, :float, expr(1.0)
+        end
+
+        actions do
+          defaults [:read]
+        end
+
+        attributes do
+          uuid_primary_key :id
+          attribute :title, :string, public?: true
+          attribute :language, :atom, public?: true, constraints: [one_of: [:french]]
+        end
+      end
+    end
+  end
 end

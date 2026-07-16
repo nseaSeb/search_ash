@@ -83,4 +83,22 @@ defmodule SearchAsh.PostgresSearchTest do
 
     assert [_] = search("galop", "a")
   end
+
+  test "an unsupported language falls back to the default instead of crashing" do
+    create(%{title: "chevaux", body: "x", language: :french}, "a")
+    # :klingon is not a Stemmers language → normalized to the default (:french).
+    assert [%{title: "chevaux"}] = search("chevaux", "a", :klingon)
+  end
+
+  test "a blank query is unranked and does not load :search_rank" do
+    create(%{title: "x", body: "y", language: :french}, "a")
+    [row] = search("", "a")
+    assert match?(%Ash.NotLoaded{}, row.search_rank)
+  end
+
+  test "a real query loads :search_rank as a float" do
+    create(%{title: "cheval", body: "cheval", language: :french}, "a")
+    [row] = search("cheval", "a")
+    assert is_float(row.search_rank)
+  end
 end

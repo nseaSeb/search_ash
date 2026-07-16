@@ -20,31 +20,44 @@ defmodule SearchAsh.Preparations.Search do
         do: SearchCore.tsquery(term, language, prefix: SearchAsh.Info.prefix?(resource)),
         else: ""
 
-    if tsquery == "" do
-      # Nothing searchable → no filter, so a list UI shows all rows before you type.
-      query
-    else
-      query
-      |> Ash.Query.filter(
-        fragment(
-          "to_tsvector('simple', ?) @@ to_tsquery('simple', ?)",
-          ^ref(search_text_attribute),
-          ^tsquery
-        )
-      )
-      |> maybe_rank(SearchAsh.Info.rank?(resource), tsquery)
-    end
+    query
+    |> maybe_filter(search_text_attribute, tsquery)
+    |> apply_rank(SearchAsh.Info.rank?(resource), tsquery)
   end
 
-  # Order by relevance and expose the score, unless ranking is disabled.
-  defp maybe_rank(query, false, _tsquery), do: query
+  # Blank/short query → no filter, so a list UI shows all rows before you type.
+  defp maybe_filter(query, _search_text_attribute, ""), do: query
 
-  defp maybe_rank(query, true, tsquery) do
+  defp maybe_filter(query, search_text_attribute, tsquery) do
+    Ash.Query.filter(
+      query,
+      fragment(
+        "to_tsvector('simple', ?) @@ to_tsquery('simple', ?)",
+        ^ref(search_text_attribute),
+        ^tsquery
+      )
+    )
+  end
+
+  # Rank and expose `:search_rank` only when there is an actual query. A blank query
+  # (list-all) is returned unranked and does NOT load `:search_rank` — check
+  # `Ash.Resource.loaded?(row, :search_rank)` if you display it.
+  defp apply_rank(query, false, _tsquery), do: query
+  defp apply_rank(query, true, ""), do: query
+
+  defp apply_rank(query, true, tsquery) do
     query
     |> Ash.Query.load(search_rank: %{tsquery: tsquery})
     |> Ash.Query.sort(search_rank: {%{tsquery: tsquery}, :desc})
   end
 
-  defp normalize_language(lang, _resource) when is_atom(lang) and not is_nil(lang), do: lang
-  defp normalize_language(_lang, resource), do: SearchAsh.Info.default_language(resource)
+  # Fall back to the resource's default language for anything that isn't a supported
+  # Stemmers language (nil, a non-atom, or an unknown atom) — never crash the stemmer.
+  defp normalize_language(lang, resource) do
+    if is_atom(lang) and Stemmers.supported?(lang) do
+      lang
+    else
+      SearchAsh.Info.default_language(resource)
+    end
+  end
 end

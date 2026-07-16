@@ -83,7 +83,10 @@ Postgres-backed test suite.
   NIF, which can't run inside an atomic SQL update, so any `update` action on a
   search-enabled resource must set `require_atomic? false`.
 - **Ranking** is on by default (`rank?`), ordering by `ts_rank` and exposing the score as
-  the `:search_rank` calculation; set `rank?: false` to filter only.
+  the `:search_rank` calculation; set `rank?: false` to filter only. `:search_rank` is
+  loaded only for an actual query — a blank query (list-all) is returned unranked.
+- An **unsupported/blank `language`** argument falls back to `default_language` rather than
+  raising.
 - The search matches the last token as a **prefix** (`prefix?`, on) and treats a **blank
   query as "no filter"** so it composes with list UIs.
 

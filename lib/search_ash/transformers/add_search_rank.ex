@@ -18,32 +18,47 @@ defmodule SearchAsh.Transformers.AddSearchRank do
 
   @impl true
   def transform(dsl) do
-    if rank?(dsl) and not calc_defined?(dsl) do
-      search_text = Transformer.get_option(dsl, [:search], :search_text_attribute) || :search_text
+    cond do
+      not rank?(dsl) ->
+        {:ok, dsl}
 
-      calc_expr =
-        Ash.Expr.expr(
-          fragment(
-            "ts_rank(to_tsvector('simple', ?), to_tsquery('simple', ?))",
-            ^ref(search_text),
-            ^arg(:tsquery)
+      calc_defined?(dsl) ->
+        # The `:search` preparation loads/sorts `:search_rank` with a `:tsquery` argument;
+        # a user calc of the same name would break that at query time. Fail clearly now.
+        raise Spark.Error.DslError,
+          module: Transformer.get_persisted(dsl, :module),
+          path: [:search, :rank?],
+          message:
+            "a `:search_rank` calculation already exists. Rename it, or set " <>
+              "`rank? false` in the `search` block to keep your own ranking."
+
+      true ->
+        search_text =
+          Transformer.get_option(dsl, [:search], :search_text_attribute) || :search_text
+
+        calc_expr =
+          Ash.Expr.expr(
+            fragment(
+              "ts_rank(to_tsvector('simple', ?), to_tsquery('simple', ?))",
+              ^ref(search_text),
+              ^arg(:tsquery)
+            )
           )
-        )
 
-      {:ok, argument} =
-        Ash.Resource.Builder.build_calculation_argument(:tsquery, :string, allow_nil?: false)
+        {:ok, argument} =
+          Ash.Resource.Builder.build_calculation_argument(:tsquery, :string, allow_nil?: false)
 
-      {:ok, calc} =
-        Ash.Resource.Builder.build_calculation(:search_rank, :float, calc_expr,
-          arguments: [argument]
-        )
+        {:ok, calc} =
+          Ash.Resource.Builder.build_calculation(:search_rank, :float, calc_expr,
+            arguments: [argument]
+          )
 
-      {:ok, Transformer.add_entity(dsl, [:calculations], calc)}
-    else
-      {:ok, dsl}
+        {:ok, Transformer.add_entity(dsl, [:calculations], calc)}
     end
   end
 
+  # Compile-time counterpart of `SearchAsh.Info.rank?/1` (which reads the compiled module
+  # at runtime). Keep the default (true) in sync with it.
   defp rank?(dsl), do: Transformer.get_option(dsl, [:search], :rank?) != false
 
   defp calc_defined?(dsl) do
