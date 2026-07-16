@@ -18,7 +18,9 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
   @impl true
   def transform(dsl) do
     action_name = Transformer.get_option(dsl, [:global_index], :action) || :global_search
-    search_text = Transformer.get_option(dsl, [:global_index], :search_text_attribute) || :search_text
+
+    search_text =
+      Transformer.get_option(dsl, [:global_index], :search_text_attribute) || :search_text
 
     dsl
     |> ensure_default_action(:read, primary?: true)
@@ -89,7 +91,10 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
         Ash.Resource.Builder.build_action_argument(:language, :atom, allow_nil?: true)
 
       {:ok, preparation} =
-        Ash.Resource.Builder.build_preparation(SearchAsh.GlobalIndex.Preparations.GlobalSearch, [])
+        Ash.Resource.Builder.build_preparation(
+          SearchAsh.GlobalIndex.Preparations.GlobalSearch,
+          []
+        )
 
       {:ok, action} =
         Ash.Resource.Builder.build_action(:read, action_name,

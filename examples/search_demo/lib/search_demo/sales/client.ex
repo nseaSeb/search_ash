@@ -3,7 +3,8 @@ defmodule SearchDemo.Sales.Client do
   use Ash.Resource,
     otp_app: :search_demo,
     domain: SearchDemo.Sales,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
 
   postgres do
     table "clients"
@@ -16,19 +17,22 @@ defmodule SearchDemo.Sales.Client do
     global? true
   end
 
+  searchable do
+    index SearchDemo.Search.Document
+    source_type(:client)
+    fields [:nom, :email, :notes]
+    label_field(:nom)
+  end
+
   actions do
     defaults [:read]
 
     create :create do
       accept [:nom, :email, :notes, :language]
-
-      change {SearchDemo.Sales.Changes.SyncToIndex,
-              source_type: "client", fields: [:nom, :email, :notes], label_field: :nom}
     end
 
     destroy :destroy do
       require_atomic? false
-      change {SearchDemo.Sales.Changes.RemoveFromIndex, source_type: "client"}
     end
   end
 

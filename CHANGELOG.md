@@ -14,5 +14,14 @@ Initial release. An Ash extension for multilingual full-text search.
 - DSL options: `fields`, `language_attribute`, `search_text_attribute`, `index_name`,
   `action`, `default_language`, `prefix?`, `rank?`.
 
-Note: `update` actions on a search-enabled resource must set `require_atomic? false`
-(stemming runs in a NIF and can't be atomic).
+Global search across resources (Option B):
+
+- `SearchAsh.GlobalIndex` — turns a resource into a unified cross-entity search index
+  (generated columns, tenant-aware identity, GIN index, `:upsert` + ranked
+  `:global_search` actions returning `(source_type, source_id, state, label, search_rank)`).
+- `SearchAsh.Source` — mirrors a resource into an index on create/update/destroy;
+  `state_attribute` drives soft-delete visibility.
+- `SearchAsh.reindex/2` — backfills existing rows (per tenant).
+
+Note: `update` actions on a search-enabled or source resource must set
+`require_atomic? false` (stemming runs in a NIF and can't be atomic).

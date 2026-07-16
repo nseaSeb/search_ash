@@ -57,7 +57,7 @@ show = fn label, results ->
 
   Enum.each(results, fn d ->
     IO.puts(
-      "  #{Float.round(d.rank, 4)}  #{String.pad_trailing(d.source_type, 8)} " <>
+      "  #{Float.round(d.search_rank, 4)}  #{String.pad_trailing(d.source_type, 8)} " <>
         "#{d.label}  (org=#{d.org_id}, id=#{String.slice(d.source_id, 0, 8)}…)"
     )
   end)
@@ -83,7 +83,7 @@ check.(
 )
 
 check.("org_b returns only its own 1 doc", length(b) == 1 and hd(b).org_id == "org_b")
-check.("results are ranked (rank descending)", a == Enum.sort_by(a, & &1.rank, :desc))
+check.("results are ranked (rank descending)", a == Enum.sort_by(a, & &1.search_rank, :desc))
 
 check.(
   "every result carries (source_type, source_id) to link the object",

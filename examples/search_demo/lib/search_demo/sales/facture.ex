@@ -3,7 +3,8 @@ defmodule SearchDemo.Sales.Facture do
   use Ash.Resource,
     otp_app: :search_demo,
     domain: SearchDemo.Sales,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
 
   postgres do
     table "factures"
@@ -16,21 +17,22 @@ defmodule SearchDemo.Sales.Facture do
     global? true
   end
 
+  searchable do
+    index SearchDemo.Search.Document
+    source_type(:facture)
+    fields [:numero, :client_nom, :description]
+    label_field(:numero)
+  end
+
   actions do
     defaults [:read]
 
     create :create do
       accept [:numero, :client_nom, :description, :language]
-
-      change {SearchDemo.Sales.Changes.SyncToIndex,
-              source_type: "facture",
-              fields: [:numero, :client_nom, :description],
-              label_field: :numero}
     end
 
     destroy :destroy do
       require_atomic? false
-      change {SearchDemo.Sales.Changes.RemoveFromIndex, source_type: "facture"}
     end
   end
 

@@ -131,7 +131,7 @@ defmodule SearchDemo.SearchTest do
       results = search("chevaux", "org_a")
       # F-001 mentions cheval/chevaux twice → ranks above the client (once).
       assert hd(results).label == "F-001"
-      assert results == Enum.sort_by(results, & &1.rank, :desc)
+      assert results == Enum.sort_by(results, & &1.search_rank, :desc)
     end
 
     test "tenant isolation — look-alike rows never cross tenants" do

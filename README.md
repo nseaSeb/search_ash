@@ -1,8 +1,8 @@
 # search_ash
 
-An [Ash](https://ash-hq.org) extension for **multilingual full-text search**. One
-`search do … end` block on a resource generates everything needed for Postgres
-tsvector search — no hand-written migrations, changes or SQL.
+[Ash](https://ash-hq.org) extensions for **multilingual full-text search** on Postgres —
+per-resource (`search do … end`) and **global cross-entity** search (a unified index).
+No hand-written migrations, changes or SQL.
 
 Part of the [search_ash monorepo](../); built on
 [`search_core`](../search_core) and the [`stemmers`](../stemmers) Rust NIF.
@@ -57,7 +57,67 @@ lock-step — a search for an inflected form matches the stored stem. Searches a
 to the language argument (each row is stemmed in its own language, so a search probes
 one language at a time), which composes with Ash multitenancy.
 
-## Options
+## Global search across resources (Option B)
+
+The `search do … end` block searches **one** resource. To search **across** many entity
+types (produits, clients, bons de commande, livraisons…) from a single ranked query, use
+the unified-index extensions:
+
+- **`SearchAsh.GlobalIndex`** turns a resource into a unified search index — one row per
+  indexed object. It generates the columns, a tenant-aware unique identity, a GIN index,
+  an `:upsert` action, and a **`:global_search`** read action that filters + ranks and
+  returns `(source_type, source_id, state, label, search_rank)`:
+
+  ```elixir
+  defmodule MyApp.Search.Document do
+    use Ash.Resource,
+      domain: MyApp.Search, data_layer: AshPostgres.DataLayer,
+      extensions: [SearchAsh.GlobalIndex]
+
+    postgres do table "search_documents"; repo MyApp.Repo end
+    multitenancy do strategy :attribute; attribute :org_id end
+    global_index do default_language :french end
+    attributes do
+      uuid_primary_key :id
+      attribute :org_id, :string, allow_nil?: false, public?: true
+    end
+  end
+  ```
+
+- **`SearchAsh.Source`** mirrors each source resource into that index:
+
+  ```elixir
+  searchable do
+    index MyApp.Search.Document
+    source_type :bon_de_commande
+    fields [:numero, :client_nom, :description]
+    label_field :numero
+    state_attribute :status   # optional — its value becomes the index `state`
+  end
+  ```
+
+  Create/update upserts a stemmed document; destroy removes it. A **soft delete** that
+  sets `state_attribute` to a non-visible state (e.g. `:archived`) hides the row from
+  `:global_search` while keeping it. `update` actions need `require_atomic? false`.
+
+Then one query, ranked, tenant-isolated:
+
+```elixir
+MyApp.Search.global_search!("dupont", :french, tenant: "org_42")
+# => [%{source_type: "bon_de_commande", source_id: "…", state: :active, search_rank: 0.9}, …]
+```
+
+**Backfill existing data** with `SearchAsh.reindex/2` (per tenant):
+
+```elixir
+SearchAsh.reindex(MyApp.Sales.BonDeCommande, tenant: "org_42")
+```
+
+The index is a normal Ash resource, so admin tools (view indexed content, force a
+reindex) are just reads/actions on it. `global_index` options: `default_language`,
+`visible_states` (default `[:active]`), `search_text_attribute`, `action`.
+
+## Options (`search do … end`)
 
 | Option | Default | Meaning |
 |---|---|---|
