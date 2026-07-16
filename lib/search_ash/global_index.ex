@@ -31,9 +31,10 @@ defmodule SearchAsh.GlobalIndex do
       end
 
   It generates the index columns (`source_type`, `source_id`, `language`, `search_text`,
-  `state`, `label`), a `unique_source` identity, a GIN index, an `:upsert` action, a
+  `archived`, `label`), a `unique_source` identity, a GIN index, an `:upsert` action, a
   `:search_rank` calculation and a **`:global_search`** read action that filters + ranks
-  (`ts_rank`, prefix-aware) and returns `(source_type, source_id, state, label, rank)`.
+  (`ts_rank`, prefix-aware) and returns `(source_type, source_id, archived, label, rank)`.
+  It hides `archived` rows by default; pass `include_archived?: true` to get both.
 
   Source resources feed it with the `SearchAsh.Source` extension. Existing data is
   backfilled with `SearchAsh.reindex/2`.
@@ -47,13 +48,6 @@ defmodule SearchAsh.GlobalIndex do
         type: :atom,
         default: :french,
         doc: "Language used to stem the query when `:global_search`'s language arg is omitted."
-      ],
-      visible_states: [
-        type: {:list, :atom},
-        default: [:active],
-        doc:
-          "Which document `state`s `:global_search` returns. Soft-deleted rows kept with a " <>
-            "different state are hidden unless listed here."
       ],
       search_text_attribute: [
         type: :atom,

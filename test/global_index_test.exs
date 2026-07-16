@@ -20,14 +20,17 @@ defmodule SearchAsh.GlobalIndexTest do
   defp create(attrs, tenant), do: Domain.create_product!(attrs, tenant: tenant)
   defp gsearch(query, tenant), do: Domain.global_search!(query, :french, tenant: tenant)
 
-  defp gsearch(query, tenant, states),
-    do: Domain.global_search!(query, :french, %{states: states}, tenant: tenant)
+  defp gsearch(query, tenant, include_archived?) do
+    Domain.global_search!(query, :french, %{include_archived?: include_archived?}, tenant: tenant)
+  end
 
   test "creating a source resource indexes it into the global index" do
     create(%{name: "Vis inox M6", sku: "VIS-M6"}, "a")
 
     assert Repo.aggregate(SearchDocument, :count) == 1
-    assert [%{source_type: "product", label: "Vis inox M6"}] = gsearch("vis", "a")
+
+    assert [%{source_type: "product", label: "Vis inox M6", archived: false}] =
+             gsearch("vis", "a")
   end
 
   test "results carry (source_type, source_id) and are ranked" do
@@ -49,17 +52,7 @@ defmodule SearchAsh.GlobalIndexTest do
     assert [%{org_id: "b"}] = gsearch("chevaux", "b")
   end
 
-  test "soft delete via state_attribute hides the row but keeps it in the index" do
-    product = create(%{name: "Boulangerie", sku: "BLG"}, "a")
-    assert [_] = gsearch("boulan", "a")
-
-    Domain.update_product!(product, %{status: :archived}, tenant: "a")
-
-    assert [] = gsearch("boulan", "a")
-    assert Repo.aggregate(SearchDocument, :count) == 1
-  end
-
-  test "destroy removes the row from the index" do
+  test "destroy removes the row from the index (on_destroy :remove)" do
     product = create(%{name: "Ephemere", sku: "EPH"}, "a")
     assert Repo.aggregate(SearchDocument, :count) == 1
 
@@ -72,8 +65,8 @@ defmodule SearchAsh.GlobalIndexTest do
     # Insert directly, bypassing the sync change, to simulate existing data.
     Ecto.Adapters.SQL.query!(
       Repo,
-      "INSERT INTO test_products (org_id, name, sku, status, language) " <>
-        "VALUES ('a', 'Marteau', 'MRT', 'active', 'french')",
+      "INSERT INTO test_products (org_id, name, sku, discontinued, language) " <>
+        "VALUES ('a', 'Marteau', 'MRT', false, 'french')",
       []
     )
 
@@ -85,31 +78,44 @@ defmodule SearchAsh.GlobalIndexTest do
     assert [%{label: "Marteau"}] = gsearch("marteau", "a")
   end
 
-  # --- flexible soft-delete (state derived by a function, on_destroy keeps the row) ---
+  # --- archived, driven by an attribute ---
 
-  test "state derived by a function: soft-deleting (deleted_at) hides but keeps the row" do
+  test "archived attribute: updating it hides the row from search but keeps it indexed" do
+    product = create(%{name: "Boulangerie", sku: "BLG"}, "a")
+    assert [%{archived: false}] = gsearch("boulan", "a")
+
+    Domain.update_product!(product, %{discontinued: true}, tenant: "a")
+
+    assert [] = gsearch("boulan", "a")
+    assert [%{archived: true}] = gsearch("boulan", "a", true)
+    assert Repo.aggregate(SearchDocument, :count) == 1
+  end
+
+  # --- archived, driven by a function, kept on destroy (AshArchival-style) ---
+
+  test "archived function (deleted_at) + on_destroy :archive keeps the row archived" do
     invoice = Domain.create_invoice!(%{number: "BC-2024-017"}, tenant: "a")
-    assert [%{state: :active}] = gsearch("bc", "a")
+    assert [%{archived: false}] = gsearch("bc", "a")
+
+    # soft delete via a destroy action
+    Domain.destroy_invoice!(invoice, tenant: "a")
+
+    assert [] = gsearch("bc", "a")
+    assert [%{archived: true}] = gsearch("bc", "a", true)
+    assert Repo.aggregate(SearchDocument, :count) == 1
+  end
+
+  test "soft delete via an update (deleted_at) hides but keeps the row" do
+    invoice = Domain.create_invoice!(%{number: "BC-2024-018"}, tenant: "a")
+    assert [_] = gsearch("bc", "a")
 
     Domain.update_invoice!(invoice, %{deleted_at: DateTime.utc_now()}, tenant: "a")
 
     assert [] = gsearch("bc", "a")
-    assert [%{state: :deleted}] = gsearch("bc", "a", [:deleted])
-    assert Repo.aggregate(SearchDocument, :count) == 1
+    assert [%{archived: true}] = gsearch("bc", "a", true)
   end
 
-  test "on_destroy {:set_state, :archived}: destroy keeps the row archived" do
-    invoice = Domain.create_invoice!(%{number: "BC-2024-018"}, tenant: "a")
-    assert Repo.aggregate(SearchDocument, :count) == 1
-
-    Domain.destroy_invoice!(invoice, tenant: "a")
-
-    assert [] = gsearch("bc", "a")
-    assert [%{state: :archived}] = gsearch("bc", "a", [:archived])
-    assert Repo.aggregate(SearchDocument, :count) == 1
-  end
-
-  test "the states argument returns several groups (active + archived) for the UI" do
+  test "include_archived? returns both groups (active + archived) for the UI" do
     Domain.create_invoice!(%{number: "BC-actif"}, tenant: "a")
     to_archive = Domain.create_invoice!(%{number: "BC-archive"}, tenant: "a")
     Domain.destroy_invoice!(to_archive, tenant: "a")
@@ -117,6 +123,6 @@ defmodule SearchAsh.GlobalIndexTest do
     labels = fn results -> results |> Enum.map(& &1.label) |> Enum.sort() end
 
     assert ["BC-actif"] = labels.(gsearch("bc", "a"))
-    assert ["BC-actif", "BC-archive"] = labels.(gsearch("bc", "a", [:active, :archived]))
+    assert ["BC-actif", "BC-archive"] = labels.(gsearch("bc", "a", true))
   end
 end

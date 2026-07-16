@@ -15,16 +15,18 @@ defmodule SearchAsh.Source do
           fields [:numero, :client_nom, :description]
           language_attribute :language
           label_field :numero
-          state_attribute :status      # optional — its value becomes the index `state`
+          archived :deleted_at         # optional — truthy value marks the row archived
         end
 
         # ... attributes + a create action ...
-        # update actions need `require_atomic? false` (stemming runs in a NIF).
+        # update/destroy actions need `require_atomic? false` (stemming runs in a NIF).
       end
 
-  On create/update it upserts a stemmed document into the index (tenant-aware); on destroy
-  it removes it. With `state_attribute`, a soft delete (e.g. setting `status: :archived`)
-  flows into the index `state`, so `:global_search` hides it while keeping the row.
+  On create/update it upserts a stemmed document into the index (tenant-aware). `archived`
+  derives the index flag from a source attribute's truthiness (a boolean, or a
+  `deleted_at` timestamp) or a `record -> boolean` function; `:global_search` hides
+  archived rows by default. On destroy, `on_destroy` either removes the row (`:remove`,
+  default) or keeps it archived (`:archive`, for AshArchival-style soft deletes).
 
   Backfill existing rows with `SearchAsh.reindex(MyApp.Sales.BonDeCommande)`.
   """
@@ -58,21 +60,22 @@ defmodule SearchAsh.Source do
         required: false,
         doc: "Attribute used as the human-readable label stored in the index."
       ],
-      state: [
+      archived: [
         type: {:or, [:atom, {:fun, 1}]},
         required: false,
         doc:
-          "How to derive the index `state` (defaults to `:active`). Either an atom " <>
-            "attribute name whose value is copied, or a 1-arity function `record -> atom` " <>
-            "(e.g. `fn r -> if r.deleted_at, do: :deleted, else: :active end`)."
+          "How to derive the index `archived` flag (default `false` — always visible). " <>
+            "Either an attribute name whose **truthiness** marks the row archived (works " <>
+            "for a boolean flag or a `deleted_at` timestamp), or a 1-arity function " <>
+            "`record -> boolean`."
       ],
       on_destroy: [
-        type: {:or, [{:literal, :remove}, {:tuple, [{:literal, :set_state}, :atom]}]},
+        type: {:or, [{:literal, :remove}, {:literal, :archive}]},
         default: :remove,
         doc:
           "What to do with the index row when the source is destroyed: `:remove` (default, " <>
-            "for hard delete) or `{:set_state, :archived}` to keep it with a state instead " <>
-            "(for soft-delete via a destroy action, e.g. AshArchival)."
+            "for hard delete) or `:archive` to keep it with `archived: true` (for a " <>
+            "soft-delete via a destroy action, e.g. AshArchival)."
       ]
     ]
   }

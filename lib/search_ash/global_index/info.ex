@@ -6,10 +6,6 @@ defmodule SearchAsh.GlobalIndex.Info do
   def default_language(resource),
     do: Extension.get_opt(resource, [:global_index], :default_language, :french)
 
-  @doc "Document states returned by `:global_search`."
-  def visible_states(resource),
-    do: Extension.get_opt(resource, [:global_index], :visible_states, [:active])
-
   @doc "Attribute holding the pre-stemmed tokens."
   def search_text_attribute(resource),
     do: Extension.get_opt(resource, [:global_index], :search_text_attribute, :search_text)

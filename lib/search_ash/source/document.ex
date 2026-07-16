@@ -18,7 +18,7 @@ defmodule SearchAsh.Source.Document do
       source_id: source_id(resource, record),
       language: language,
       search_text: SearchCore.searchable_text(text, language),
-      state: resolve_state(record, Info.state(resource)),
+      archived: resolve_archived(record, Info.archived(resource)),
       label: label(record, Info.label_field(resource))
     }
   end
@@ -30,11 +30,27 @@ defmodule SearchAsh.Source.Document do
     |> Enum.join(":")
   end
 
-  defp resolve_state(_record, nil), do: :active
-  defp resolve_state(record, fun) when is_function(fun, 1), do: fun.(record) || :active
+  @doc """
+  Whether every attribute the index needs is loaded on `record` (i.e. not `%Ash.NotLoaded{}`).
+  The sync uses this to avoid indexing from a partially-loaded record (a narrowed `select`).
+  """
+  def loaded?(resource, record) do
+    (Info.fields(resource) ++ [Info.language_attribute(resource) | archived_attributes(resource)])
+    |> Enum.all?(&(not match?(%Ash.NotLoaded{}, Map.get(record, &1))))
+  end
 
-  defp resolve_state(record, attribute) when is_atom(attribute),
-    do: Map.get(record, attribute) || :active
+  defp archived_attributes(resource) do
+    case Info.archived(resource) do
+      attribute when is_atom(attribute) and not is_nil(attribute) -> [attribute]
+      _fun_or_nil -> []
+    end
+  end
+
+  defp resolve_archived(_record, nil), do: false
+  defp resolve_archived(record, fun) when is_function(fun, 1), do: !!fun.(record)
+
+  defp resolve_archived(record, attribute) when is_atom(attribute),
+    do: Map.get(record, attribute) not in [nil, false]
 
   defp label(_record, nil), do: nil
   defp label(record, field), do: to_string(Map.get(record, field) || "")

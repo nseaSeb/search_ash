@@ -66,7 +66,7 @@ the unified-index extensions:
 - **`SearchAsh.GlobalIndex`** turns a resource into a unified search index — one row per
   indexed object. It generates the columns, a tenant-aware unique identity, a GIN index,
   an `:upsert` action, and a **`:global_search`** read action that filters + ranks and
-  returns `(source_type, source_id, state, label, search_rank)`:
+  returns `(source_type, source_id, archived, label, search_rank)`:
 
   ```elixir
   defmodule MyApp.Search.Document do
@@ -94,30 +94,29 @@ the unified-index extensions:
     label_field :numero
 
     # Soft delete, your way:
-    state fn r -> if r.deleted_at, do: :deleted, else: :active end  # or: state :status
-    on_destroy {:set_state, :archived}   # or :remove (default, hard delete)
+    archived :deleted_at        # truthy attribute → archived (a boolean flag works too)
+    on_destroy :archive         # or :remove (default, hard delete)
   end
   ```
 
   Create/update upserts a stemmed document; destroy either removes it (`on_destroy:
-  :remove`, default) or keeps it with a state (`{:set_state, s}`, for soft-delete via a
-  destroy such as AshArchival). `state` derives the index `state` from the record — an
-  attribute name to copy, or a `record -> atom` function (e.g. mapping `deleted_at`).
-  `update` actions need `require_atomic? false`.
+  :remove`, default) or keeps it flagged (`:archive`, for soft-delete via a destroy such
+  as AshArchival). `archived` derives the index's boolean flag from a source attribute's
+  **truthiness** — a boolean, or a `deleted_at` timestamp — or a `record -> boolean`
+  function; it defaults to `false`. `update`/`destroy` actions need `require_atomic? false`.
 
-  `:global_search` returns only `visible_states` (default `[:active]`) but takes a
-  `states` argument to override it — so you can query, say, `[:active, :archived]` and
-  **group results by `state`** in the UI:
+  `:global_search` **hides archived rows by default**, but takes `include_archived?: true`
+  to return both — so you can **group results by `archived`** in the UI:
 
   ```elixir
-  MyApp.Search.global_search!("dupont", :french, %{states: [:active, :archived]}, tenant: "org_42")
+  MyApp.Search.global_search!("dupont", :french, %{include_archived?: true}, tenant: "org_42")
   ```
 
 Then one query, ranked, tenant-isolated:
 
 ```elixir
 MyApp.Search.global_search!("dupont", :french, tenant: "org_42")
-# => [%{source_type: "bon_de_commande", source_id: "…", state: :active, search_rank: 0.9}, …]
+# => [%{source_type: "bon_de_commande", source_id: "…", archived: false, search_rank: 0.9}, …]
 ```
 
 **Backfill existing data** with `SearchAsh.reindex/2` (per tenant):
@@ -128,7 +127,7 @@ SearchAsh.reindex(MyApp.Sales.BonDeCommande, tenant: "org_42")
 
 The index is a normal Ash resource, so admin tools (view indexed content, force a
 reindex) are just reads/actions on it. `global_index` options: `default_language`,
-`visible_states` (default `[:active]`), `search_text_attribute`, `action`.
+`search_text_attribute`, `action`. Archived rows are hidden by default (`include_archived?: true` to include them).
 
 ## Options (`search do … end`)
 

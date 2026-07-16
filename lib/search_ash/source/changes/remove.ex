@@ -1,8 +1,8 @@
 defmodule SearchAsh.Source.Changes.Remove do
   @moduledoc false
   # On destroy: either remove the source record's index row (`on_destroy: :remove`, hard
-  # delete) or keep it with a new state (`on_destroy: {:set_state, s}`, soft delete via a
-  # destroy action).
+  # delete) or keep it flagged archived (`on_destroy: :archive`, soft delete via a destroy
+  # action such as AshArchival).
   use Ash.Resource.Change
   require Ash.Query
 
@@ -14,7 +14,7 @@ defmodule SearchAsh.Source.Changes.Remove do
       resource = changeset.resource
 
       case Info.on_destroy(resource) do
-        {:set_state, state} -> set_state(resource, record, state, changeset.tenant)
+        :archive -> archive(resource, record, changeset.tenant)
         _remove -> remove(resource, record, changeset.tenant)
       end
 
@@ -33,9 +33,9 @@ defmodule SearchAsh.Source.Changes.Remove do
     |> Enum.each(&Ash.destroy!(&1, tenant: tenant))
   end
 
-  defp set_state(resource, record, state, tenant) do
+  defp archive(resource, record, tenant) do
     index = Info.index(resource)
-    attrs = resource |> Document.to_attrs(record) |> Map.put(:state, state)
+    attrs = resource |> Document.to_attrs(record) |> Map.put(:archived, true)
 
     index
     |> Ash.Changeset.for_create(:upsert, attrs, tenant: tenant)

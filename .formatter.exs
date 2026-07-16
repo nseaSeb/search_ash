@@ -1,5 +1,6 @@
 spark_locals_without_parens = [
   action: 1,
+  archived: 1,
   default_language: 1,
   fields: 1,
   index: 1,
@@ -10,9 +11,7 @@ spark_locals_without_parens = [
   prefix?: 1,
   rank?: 1,
   search_text_attribute: 1,
-  source_type: 1,
-  state: 1,
-  visible_states: 1
+  source_type: 1
 ]
 
 [

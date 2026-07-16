@@ -1,8 +1,9 @@
 defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
   @moduledoc """
-  Preparation for a `SearchAsh.GlobalIndex` resource's `:global_search` action. Scopes to
-  the visible `state`s, filters on the tsvector match, and ranks by `ts_rank` (prefix-aware,
-  with a primary-key tiebreaker). A blank query lists the visible rows, unranked.
+  Preparation for a `SearchAsh.GlobalIndex` resource's `:global_search` action. Hides
+  `archived` rows (unless `include_archived?: true`), filters on the tsvector match, and
+  ranks by `ts_rank` (prefix-aware, with a primary-key tiebreaker). A blank query lists
+  the matching rows, unranked.
   """
   use Ash.Resource.Preparation
   require Ash.Query
@@ -21,15 +22,14 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
         do: SearchCore.tsquery(term, language, prefix: true),
         else: ""
 
-    states = Ash.Query.get_argument(query, :states) || Info.visible_states(resource)
-
     query
-    |> filter_states(states)
+    |> maybe_hide_archived(Ash.Query.get_argument(query, :include_archived?))
     |> maybe_filter(search_text_attribute, tsquery)
     |> maybe_rank(tsquery)
   end
 
-  defp filter_states(query, states), do: Ash.Query.filter(query, state in ^states)
+  defp maybe_hide_archived(query, true), do: query
+  defp maybe_hide_archived(query, _), do: Ash.Query.filter(query, archived == false)
 
   defp maybe_filter(query, _search_text_attribute, ""), do: query
 

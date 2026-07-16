@@ -22,19 +22,19 @@ defmodule SearchAsh.Test.Product do
     fields [:name, :sku]
     language_attribute :language
     label_field :name
-    state :status
+    archived :discontinued
   end
 
   actions do
     defaults [:read]
 
     create :create do
-      accept [:name, :sku, :language, :status]
+      accept [:name, :sku, :language, :discontinued]
     end
 
     update :update do
       require_atomic? false
-      accept [:name, :sku, :language, :status]
+      accept [:name, :sku, :language, :discontinued]
     end
 
     destroy :destroy do
@@ -47,7 +47,7 @@ defmodule SearchAsh.Test.Product do
     attribute :org_id, :string, allow_nil?: false, public?: true
     attribute :name, :string, public?: true
     attribute :sku, :string, public?: true
-    attribute :status, :atom, public?: true, default: :active
+    attribute :discontinued, :boolean, public?: true, default: false
 
     attribute :language, :atom,
       allow_nil?: false,

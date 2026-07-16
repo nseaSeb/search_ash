@@ -14,9 +14,9 @@ defmodule SearchAsh.Source.Info do
 
   def label_field(resource), do: Extension.get_opt(resource, [:searchable], :label_field, nil)
 
-  @doc "State resolver: `nil`, an attribute name, or a `record -> atom` function."
-  def state(resource), do: Extension.get_opt(resource, [:searchable], :state, nil)
+  @doc "Archived resolver: `nil`, an attribute name (truthiness), or a `record -> boolean`."
+  def archived(resource), do: Extension.get_opt(resource, [:searchable], :archived, nil)
 
-  @doc "`:remove` or `{:set_state, atom}` — index behaviour when the source is destroyed."
+  @doc "`:remove` or `:archive` — index behaviour when the source is destroyed."
   def on_destroy(resource), do: Extension.get_opt(resource, [:searchable], :on_destroy, :remove)
 end

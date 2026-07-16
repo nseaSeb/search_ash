@@ -23,8 +23,8 @@ defmodule SearchAsh.Test.Invoice do
     source_type :invoice
     fields [:number]
     label_field :number
-    state fn record -> if record.deleted_at, do: :deleted, else: :active end
-    on_destroy {:set_state, :archived}
+    archived fn record -> not is_nil(record.deleted_at) end
+    on_destroy :archive
   end
 
   actions do

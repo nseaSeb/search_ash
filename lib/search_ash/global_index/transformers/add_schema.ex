@@ -26,7 +26,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
       constraints: [one_of: Stemmers.supported_languages()]
     )
     |> add_attribute(search_text, :string, allow_nil?: true, public?: true)
-    |> add_attribute(:state, :atom, allow_nil?: false, public?: true, default: :active)
+    |> add_attribute(:archived, :boolean, allow_nil?: false, public?: true, default: false)
     |> add_attribute(:label, :string, public?: true)
     |> add_identity()
     |> add_gin_index(search_text)
@@ -69,27 +69,34 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
   end
 
   defp add_identity(dsl) do
-    keys = tenant_attribute(dsl) ++ [:source_type, :source_id]
-    {:ok, identity} = Ash.Resource.Builder.build_identity(:unique_source, keys)
-    Transformer.add_entity(dsl, [:identities], identity)
+    if identity_defined?(dsl, :unique_source) do
+      dsl
+    else
+      keys = tenant_attribute(dsl) ++ [:source_type, :source_id]
+      {:ok, identity} = Ash.Resource.Builder.build_identity(:unique_source, keys)
+      Transformer.add_entity(dsl, [:identities], identity)
+    end
+  end
+
+  defp identity_defined?(dsl, name) do
+    dsl |> Transformer.get_entities([:identities]) |> Enum.any?(&(&1.name == name))
   end
 
   defp add_gin_index(dsl, search_text) do
-    if Transformer.get_option(dsl, [:postgres], :table) do
-      expression = "(to_tsvector('simple', #{search_text}))"
-      table = Transformer.get_option(dsl, [:postgres], :table)
+    case Transformer.get_option(dsl, [:postgres], :table) do
+      nil ->
+        dsl
 
-      {:ok, index} =
-        Transformer.build_entity(AshPostgres.DataLayer, [:postgres, :custom_indexes], :index,
-          fields: [expression],
-          using: "gin",
-          name: "#{table}_search_idx",
-          all_tenants?: true
-        )
+      table ->
+        {:ok, index} =
+          Transformer.build_entity(AshPostgres.DataLayer, [:postgres, :custom_indexes], :index,
+            fields: ["(to_tsvector('simple', #{search_text}))"],
+            using: "gin",
+            name: "#{table}_search_idx",
+            all_tenants?: true
+          )
 
-      Transformer.add_entity(dsl, [:postgres, :custom_indexes], index)
-    else
-      dsl
+        Transformer.add_entity(dsl, [:postgres, :custom_indexes], index)
     end
   end
 

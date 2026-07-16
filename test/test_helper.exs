@@ -43,7 +43,7 @@ CREATE TABLE test_search_documents (
   source_id text NOT NULL,
   language text NOT NULL,
   search_text text,
-  state text NOT NULL DEFAULT 'active',
+  archived boolean NOT NULL DEFAULT false,
   label text,
   UNIQUE (org_id, source_type, source_id)
 )
@@ -60,7 +60,7 @@ CREATE TABLE test_products (
   org_id text NOT NULL,
   name text,
   sku text,
-  status text NOT NULL DEFAULT 'active',
+  discontinued boolean NOT NULL DEFAULT false,
   language text NOT NULL
 )
 """)

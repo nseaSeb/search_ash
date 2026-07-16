@@ -13,7 +13,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
     SearchAsh.GlobalIndex.Transformers.AddActions
   ]
 
-  @accept [:source_type, :source_id, :language, :search_text, :state, :label]
+  @accept [:source_type, :source_id, :language, :search_text, :archived, :label]
 
   @impl true
   def transform(dsl) do
@@ -23,21 +23,31 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
       Transformer.get_option(dsl, [:global_index], :search_text_attribute) || :search_text
 
     dsl
-    |> ensure_default_action(:read, primary?: true)
-    |> ensure_default_action(:destroy, primary?: true)
+    |> ensure_default_action(:read, [])
+    |> ensure_default_action(:destroy, [])
     |> add_upsert_action()
     |> add_search_rank(search_text)
     |> add_global_search_action(action_name)
     |> then(&{:ok, &1})
   end
 
+  # Ensure a PRIMARY action of this type exists (the Remove change reads/destroys the
+  # index via the primary read/destroy). Only add ours if none is already primary.
   defp ensure_default_action(dsl, type, opts) do
-    if action_of_type?(dsl, type) do
+    if primary_action?(dsl, type) do
       dsl
     else
-      {:ok, action} = Ash.Resource.Builder.build_action(type, type, opts)
+      {:ok, action} =
+        Ash.Resource.Builder.build_action(type, type, Keyword.put(opts, :primary?, true))
+
       Transformer.add_entity(dsl, [:actions], action)
     end
+  end
+
+  defp primary_action?(dsl, type) do
+    dsl
+    |> Transformer.get_entities([:actions])
+    |> Enum.any?(&(&1.type == type and &1.primary?))
   end
 
   defp add_upsert_action(dsl) do
@@ -90,8 +100,11 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
       {:ok, language_arg} =
         Ash.Resource.Builder.build_action_argument(:language, :atom, allow_nil?: true)
 
-      {:ok, states_arg} =
-        Ash.Resource.Builder.build_action_argument(:states, {:array, :atom}, allow_nil?: true)
+      {:ok, include_archived_arg} =
+        Ash.Resource.Builder.build_action_argument(:include_archived?, :boolean,
+          allow_nil?: false,
+          default: false
+        )
 
       {:ok, preparation} =
         Ash.Resource.Builder.build_preparation(
@@ -101,16 +114,12 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
 
       {:ok, action} =
         Ash.Resource.Builder.build_action(:read, action_name,
-          arguments: [query_arg, language_arg, states_arg],
+          arguments: [query_arg, language_arg, include_archived_arg],
           preparations: [preparation]
         )
 
       Transformer.add_entity(dsl, [:actions], action)
     end
-  end
-
-  defp action_of_type?(dsl, type) do
-    dsl |> Transformer.get_entities([:actions]) |> Enum.any?(&(&1.type == type))
   end
 
   defp action_defined?(dsl, name) do
