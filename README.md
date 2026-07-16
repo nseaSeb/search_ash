@@ -66,11 +66,14 @@ one language at a time), which composes with Ash multitenancy.
 | `search_text_attribute` | `:search_text` | Where stemmed tokens are stored (added if absent) |
 | `index_name` | `"<table>_search_idx"` | Name of the generated GIN index |
 | `action` | `:search` | Name of the generated read action |
+| `default_language` | `:french` | Language used to stem the query when the `language` argument is omitted |
+| `prefix?` | `true` | Match the last token as a prefix (`"boulan"` → `"boulangerie"`); set `false` for exact stemmed matching |
 
 ## Verify end-to-end
 
-See [`examples/blog`](examples/blog) for a runnable multilingual demo against real
-Postgres, including the `EXPLAIN` that confirms the GIN index is used.
+See [`examples/search_demo`](examples/search_demo) for a runnable multi-tenant demo
+against real Postgres — per-resource and global search, a GreenAsh console, and a
+Postgres-backed test suite.
 
 ## Status
 
