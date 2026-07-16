@@ -39,7 +39,9 @@ defmodule Blog.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ash.setup", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ash.reset"]
+      "ecto.reset": ["ash.reset"],
+      # `mix test` creates + migrates the (per-env) test DB first, then runs the suite.
+      test: ["ash_postgres.create --quiet", "ash_postgres.migrate --quiet", "test"]
     ]
   end
 end

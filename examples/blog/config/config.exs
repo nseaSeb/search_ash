@@ -9,7 +9,8 @@ config :blog, Blog.Repo,
   password: System.get_env("PGPASSWORD", "postgres"),
   hostname: System.get_env("PGHOST", "localhost"),
   port: String.to_integer(System.get_env("PGPORT", "5432")),
-  database: System.get_env("PGDATABASE", "search_ash_blog_example"),
+  # Per-env DB name so `mix test` uses its own database, isolated from dev data.
+  database: System.get_env("PGDATABASE", "search_ash_blog_#{config_env()}"),
   pool_size: 5
 
 # :info so `mix phx.server` prints "Running BlogWeb.Endpoint at http://localhost:4000"
