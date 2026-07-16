@@ -35,9 +35,7 @@ defmodule SearchAsh.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # Switch to `{:search_core, "~> 0.1"}` once search_core is published to Hex
-      # (see PUBLISHING.md) — a path dep can't be published.
-      {:search_core, path: "../search_core"},
+      {:search_core, "~> 0.1"},
       {:ash, "~> 3.29"},
       {:ash_postgres, "~> 2.10"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
