@@ -25,7 +25,13 @@ defmodule Blog.MixProject do
       {:search_ash, path: "../.."},
       {:search_core, path: "../../../search_core"},
       {:ash, "~> 3.29"},
-      {:ash_postgres, "~> 2.10"}
+      {:ash_postgres, "~> 2.10"},
+      # GreenAsh: a terminal-style admin console over the Ash resources (dev only).
+      {:green_ash, "~> 0.1"},
+      {:phoenix, "~> 1.7"},
+      {:phoenix_live_view, "~> 1.0"},
+      {:ash_phoenix, "~> 2.0"},
+      {:bandit, "~> 1.0"}
     ]
   end
 end
