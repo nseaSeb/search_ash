@@ -12,7 +12,9 @@ config :blog, Blog.Repo,
   database: System.get_env("PGDATABASE", "search_ash_blog_example"),
   pool_size: 5
 
-config :logger, level: :warning
+# :info so `mix phx.server` prints "Running BlogWeb.Endpoint at http://localhost:4000"
+# and request logs. (SQL/Ash debug stays hidden — it's at :debug.)
+config :logger, level: :info
 
 # Minimal Phoenix endpoint just to host the GreenAsh console at /cli (dev tool).
 config :blog, BlogWeb.Endpoint,
@@ -22,7 +24,8 @@ config :blog, BlogWeb.Endpoint,
   secret_key_base: "dev_only_secret_key_base_at_least_64_bytes_long________________________",
   live_view: [signing_salt: "greenashsalt"],
   render_errors: [formats: [html: BlogWeb.ErrorHTML], layout: false],
-  pubsub_server: Blog.PubSub,
-  server: true
+  pubsub_server: Blog.PubSub
+  # No `server: true`: `mix phx.server` starts the web server; plain `mix run <script>`
+  # (the demos) does not, so it never tries to bind the port.
 
 config :phoenix, :json_library, Jason

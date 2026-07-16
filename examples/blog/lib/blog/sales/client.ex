@@ -13,6 +13,7 @@ defmodule Blog.Sales.Client do
   multitenancy do
     strategy :attribute
     attribute :org_id
+    global? true
   end
 
   actions do

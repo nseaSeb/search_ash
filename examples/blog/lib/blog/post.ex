@@ -20,6 +20,9 @@ defmodule Blog.Post do
   multitenancy do
     strategy :attribute
     attribute :org_id
+    # Allow tenant-less reads (e.g. the GreenAsh admin console). Isolation still applies
+    # whenever a tenant IS given — the app/API always passes one.
+    global? true
   end
 
   search do
