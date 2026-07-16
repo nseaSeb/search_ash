@@ -11,8 +11,9 @@ defmodule SearchDemoWeb.Endpoint do
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]]
 
-  # Serves the Phoenix + LiveView client JS (copied from deps into priv/static/assets),
-  # so GreenAsh's LiveView console becomes interactive without an esbuild pipeline.
+  # This example has no esbuild pipeline (it wasn't made with `mix phx.new`), so it serves
+  # the vendored Phoenix + LiveView client JS from priv/static/assets. A phx.new app serves
+  # its bundled app.js instead — this Plug.Static line is not something GreenAsh requires.
   plug Plug.Static, at: "/assets", from: {:search_demo, "priv/static/assets"}, gzip: false
 
   plug Plug.Session, @session_options

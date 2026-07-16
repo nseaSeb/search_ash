@@ -81,6 +81,9 @@ edge cases (blank query, too-short query, prefix matching, wrong language).
   tenant.
 - The search actions accept a **blank query (lists all)** and match the last token as a
   **prefix** (`boulan` → `boulangerie`), which is what a live search box expects.
-- GreenAsh renders a LiveView with `layout: false` and ships no client JS, so this app
-  wires the Phoenix/LiveView JS itself — see `lib/search_demo_web/` (endpoint
-  `Plug.Static`, `SearchDemoWeb.Layouts.root/1`, the router's `:put_root_layout`).
+- This example is a **build-free** Phoenix host (`mix new --sup`, not `mix phx.new`), so it
+  has no esbuild/`app.js` pipeline. It therefore vendors the Phoenix/LiveView JS and wires
+  the LiveSocket by hand — see `lib/search_demo_web/` (endpoint `Plug.Static`,
+  `SearchDemoWeb.Layouts.root/1`, the router's `:put_root_layout`). In a standard
+  `mix phx.new` app this is all generated boilerplate and `green_ash "/cli"` is a
+  one-liner; the hand-wiring here is a property of this bare host, not of GreenAsh.

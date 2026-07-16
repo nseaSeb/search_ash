@@ -1,9 +1,17 @@
 defmodule SearchDemoWeb.Layouts do
   @moduledoc """
-  Root layout for the GreenAsh console. GreenAsh mounts its LiveView with
-  `layout: false` and ships no client JS, so the host app must provide the root layout
-  that loads the Phoenix/LiveView JS and connects the LiveSocket. Without this the
-  console renders but is not interactive.
+  Root layout for the GreenAsh console.
+
+  This example is a **deliberately build-free** Phoenix host: it was scaffolded with
+  `mix new --sup` (not `mix phx.new`), so there is no esbuild/`app.js` asset pipeline.
+  This root layout therefore vendors `phoenix(.min).js` + `phoenix_live_view(.min).js`
+  from deps (see the endpoint's `Plug.Static`) and connects the LiveSocket here.
+
+  In a standard `mix phx.new` app none of this is bespoke: the generated `root.html.heex`
+  already loads `app.js` (which bundles those libs and calls `liveSocket.connect()`), and
+  `green_ash "/cli"` mounts in one line. The root layout comes from the host's `:browser`
+  pipeline (`put_root_layout`) — GreenAsh's `layout: false` only disables the *app*
+  layout, not this one.
   """
   use Phoenix.Component
 
