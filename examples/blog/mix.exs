@@ -7,6 +7,7 @@ defmodule Blog.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps()
     ]
   end
@@ -32,6 +33,13 @@ defmodule Blog.MixProject do
       {:phoenix_live_view, "~> 1.0"},
       {:ash_phoenix, "~> 2.0"},
       {:bandit, "~> 1.0"}
+    ]
+  end
+
+  defp aliases do
+    [
+      setup: ["deps.get", "ash.setup", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ash.reset"]
     ]
   end
 end

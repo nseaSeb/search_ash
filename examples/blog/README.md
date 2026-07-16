@@ -6,15 +6,18 @@ extension generates the `search_text` column, the keep-in-sync change, the GIN i
 and the `:search` action. `Post` also uses **attribute multitenancy** (`org_id`), so
 the demo proves search composes with tenant scoping.
 
-## Run it
+## Setup
 
 Requires a reachable Postgres (defaults: `postgres`/`postgres` on `localhost:5432`;
 override with `PGUSER`/`PGPASSWORD`/`PGHOST`/`PGPORT`/`PGDATABASE`).
 
 ```sh
-mix deps.get
-mix ash_postgres.create
-mix ash_postgres.migrate
+mix setup   # deps.get + ash.setup (create + migrate) + seed demo data
+```
+
+## The search_ash extension demo
+
+```sh
 mix run demo.exs
 ```
 
@@ -56,12 +59,13 @@ The app also mounts [GreenAsh](https://hex.pm/packages/green_ash) — an auto-ge
 "green screen" admin console over all the Ash resources — at `/cli`:
 
 ```sh
-PORT=4000 mix run --no-halt   # or: iex -S mix
-# open http://localhost:4000/cli
+mix phx.server
+# open http://localhost:4000/cli   (PORT overrides the port)
 ```
 
-Create factures/clients/produits and run the search action from the console; watch the
-unified index update live.
+`mix setup` already seeded some factures/clients/produits across two orgs, so the
+console has data to browse. Create more and run the search action from the console;
+watch the unified index update live.
 
 > **Note:** GreenAsh mounts its LiveView with `layout: false` and ships no client JS, so
 > this example wires the Phoenix/LiveView JS itself — see `lib/blog_web/` (endpoint
