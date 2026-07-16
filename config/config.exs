@@ -15,4 +15,9 @@ if config_env() == :test do
     pool_size: 5
 
   config :logger, level: :warning
+
+  # Turn Ash's "missed notifications" warning into a hard failure, so a regression where an
+  # index write's notifications aren't returned up through a hook fails the suite instead
+  # of silently logging.
+  config :ash, :missed_notifications, :raise
 end

@@ -29,5 +29,16 @@ Global search across resources (Option B):
   from a partially-loaded record.
 - `SearchAsh.reindex/2` — backfills existing rows (per tenant).
 
-Note: `update` actions on a search-enabled or source resource must set
-`require_atomic? false` (stemming runs in a NIF and can't be atomic).
+Notes:
+
+- The extensions set `require_atomic? false` on the update (and, for `SearchAsh.Source`,
+  destroy) actions they augment — stemming runs in a NIF and can't be atomic, so you don't
+  set it yourself.
+- `SearchAsh.Source` bulk operations work transparently: it writes only to the separate
+  index table, so `Ash.bulk_create`/`bulk_update`/`bulk_destroy` keep the index in sync
+  with no `strategy:` option (the sync/remove changes are atomic-compatible and mirror each
+  record in `after_batch/3`). The per-resource `search do` extension computes `search_text`
+  on the row via a NIF, so `Ash.bulk_update` there must pass `strategy: :stream`. Either
+  way the default atomic strategy fails loudly rather than skipping the index.
+- Indexing is synchronous and shares the source action's transaction, so a failed index
+  write rolls back the source write (no divergence). See the README limitations.

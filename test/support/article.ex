@@ -28,9 +28,8 @@ defmodule SearchAsh.Test.Article do
       accept([:title, :body, :language])
     end
 
+    # NB: no `require_atomic? false` here — SearchAsh sets it automatically.
     update :update do
-      # The search_text sync stems via a NIF, which can't run atomically in SQL.
-      require_atomic?(false)
       accept([:title, :body, :language])
     end
   end

@@ -103,7 +103,8 @@ the unified-index extensions:
   :remove`, default) or keeps it flagged (`:archive`, for soft-delete via a destroy such
   as AshArchival). `archived` derives the index's boolean flag from a source attribute's
   **truthiness** — a boolean, or a `deleted_at` timestamp — or a `record -> boolean`
-  function; it defaults to `false`. `update`/`destroy` actions need `require_atomic? false`.
+  function; it defaults to `false`. The extension sets `require_atomic? false` on the
+  update/destroy actions it augments, so you don't set it yourself.
 
   `:global_search` **hides archived rows by default**, but takes `include_archived?: true`
   to return both — so you can **group results by `archived`** in the UI:
@@ -151,9 +152,9 @@ Postgres-backed test suite.
 
 - **Requires the AshPostgres data layer.** Search is built on Postgres `tsvector`/`ts_rank`,
   so the generated `:search` action only works on `AshPostgres.DataLayer` resources.
-- **Update actions need `require_atomic? false`.** The keep-in-sync change stems via a
-  NIF, which can't run inside an atomic SQL update, so any `update` action on a
-  search-enabled resource must set `require_atomic? false`.
+- **Atomicity is handled for you.** The keep-in-sync change stems via a NIF, which can't
+  run inside an atomic SQL update, so the extension sets `require_atomic? false` on the
+  update (and, for `SearchAsh.Source`, destroy) actions it augments — you don't set it.
 - **Ranking** is on by default (`rank?`), ordering by `ts_rank` and exposing the score as
   the `:search_rank` calculation; set `rank?: false` to filter only. `:search_rank` is
   loaded only for an actual query — a blank query (list-all) is returned unranked.
@@ -162,8 +163,38 @@ Postgres-backed test suite.
 - The search matches the last token as a **prefix** (`prefix?`, on) and treats a **blank
   query as "no filter"** so it composes with list UIs.
 
+## Production notes & limitations
+
+Know these before adopting — they're deliberate 0.1 trade-offs, not surprises:
+
+- **Indexing is synchronous, in the same transaction as the write.** The sync runs in an
+  `after_action` hook using the source's repo, so the index upsert commits (or rolls back)
+  with the source write — a failed index write fails the source write, so the two never
+  diverge. The flip side: every create/update/destroy on a source pays the stemming +
+  index-write cost inline. There is no async (Oban) path yet; if you need one, it's on the
+  roadmap.
+- **Bulk works transparently for the global index; the per-resource `search do` needs
+  `strategy: :stream` for bulk updates.** `SearchAsh.Source` writes only to the separate
+  index table, so `Ash.bulk_create`/`bulk_update`/`bulk_destroy` keep the index in sync
+  with **no `strategy:` option**. The per-resource `search do` extension instead computes
+  `search_text` **on the row itself** via a NIF, which can't run in an atomic SQL update —
+  so `Ash.bulk_update` on a `search do` resource must pass `strategy: :stream`. Either way,
+  the default atomic strategy fails **loudly** (`NoMatchingBulkStrategy`); the index is
+  never silently skipped.
+- **One language per query.** Each row is pre-stemmed in its own language and stored in a
+  `'simple'` tsvector, so a search probes one language at a time (the `language` argument).
+  Cross-language "OR" search is not built in.
+- **`reindex/2` streams every row through the write action** (one upsert per record). It's
+  built for backfills and small-to-medium tables; it is not a bulk-optimized reindex for
+  very large datasets.
+- **Index creation is not `CONCURRENTLY`.** The generated GIN index is emitted as a plain
+  `CREATE INDEX` migration; on a large existing table, plan the migration accordingly.
+- **`stemmers` ships precompiled NIFs** for macOS (arm64/x86_64) and Linux glibc
+  (arm64/x86_64). musl/Alpine is **not** prebuilt — set `STEMMERS_BUILD=1` to compile from
+  source there (needs a Rust toolchain).
+
 ## Status
 
 MVP, `:pre_stemmed` strategy — tested end-to-end against Postgres (`mix test`). Deferred:
-a `:native` per-row-`regconfig` strategy (no NIF, Postgres-supported languages only) and
-weighted fields (`setweight`).
+a `:native` per-row-`regconfig` strategy (no NIF, Postgres-supported languages only),
+weighted fields (`setweight`), and an async (Oban) indexing path.

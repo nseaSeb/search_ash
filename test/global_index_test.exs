@@ -5,7 +5,7 @@ defmodule SearchAsh.GlobalIndexTest do
   """
   use ExUnit.Case, async: false
 
-  alias SearchAsh.Test.{Domain, Product, Repo, SearchDocument}
+  alias SearchAsh.Test.{Domain, Invoice, Product, Repo, SearchDocument}
 
   setup do
     Ecto.Adapters.SQL.query!(
@@ -113,6 +113,63 @@ defmodule SearchAsh.GlobalIndexTest do
 
     assert [] = gsearch("bc", "a")
     assert [%{archived: true}] = gsearch("bc", "a", true)
+  end
+
+  # Bulk operations keep the index in sync with NO `strategy:` option — the sync/remove
+  # changes are atomic-compatible (`atomic/3` -> :ok) and mirror each record in
+  # `after_batch/3`, so the default `:atomic_batches` strategy works transparently.
+  test "bulk create/update/destroy keep the index in sync (default strategy)" do
+    products =
+      Ash.bulk_create!(
+        [%{name: "Bulk A", sku: "BA"}, %{name: "Bulk B", sku: "BB"}],
+        Product,
+        :create,
+        tenant: "a",
+        return_records?: true
+      ).records
+
+    assert Repo.aggregate(SearchDocument, :count) == 2
+
+    # bulk_update, default strategy — the index must reflect the new name.
+    Ash.bulk_update!(products, :update, %{name: "Renamed"}, tenant: "a", return_records?: true)
+
+    assert length(gsearch("renamed", "a")) == 2
+    assert gsearch("bulk", "a") == []
+    assert Repo.aggregate(SearchDocument, :count) == 2
+
+    # A bulk_update that flips the archived attribute must hide the rows from search
+    # (default) while keeping them indexed.
+    renamed = Ash.read!(Product, tenant: "a")
+    Ash.bulk_update!(renamed, :update, %{discontinued: true}, tenant: "a", return_records?: true)
+    assert gsearch("renamed", "a") == []
+    assert length(gsearch("renamed", "a", true)) == 2
+
+    # bulk_destroy, default strategy — the index rows must be gone (on_destroy: :remove).
+    Ash.bulk_destroy!(renamed, :destroy, %{}, tenant: "a")
+
+    assert Repo.aggregate(SearchDocument, :count) == 0
+  end
+
+  # Covers the other destroy branch under bulk: on_destroy :archive + function-driven
+  # `archived`. Default strategy, no `strategy:` option.
+  test "bulk_destroy with on_destroy: :archive keeps rows flagged archived (default strategy)" do
+    invoices =
+      Ash.bulk_create!(
+        [%{number: "BC-B1"}, %{number: "BC-B2"}],
+        Invoice,
+        :create,
+        tenant: "a",
+        return_records?: true
+      ).records
+
+    assert length(gsearch("bc", "a")) == 2
+
+    Ash.bulk_destroy!(invoices, :destroy, %{}, tenant: "a")
+
+    # Rows are kept but hidden by default, and returned (archived: true) when asked for.
+    assert gsearch("bc", "a") == []
+    assert [%{archived: true}, %{archived: true}] = gsearch("bc", "a", true)
+    assert Repo.aggregate(SearchDocument, :count) == 2
   end
 
   test "include_archived? returns both groups (active + archived) for the UI" do

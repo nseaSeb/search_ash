@@ -34,13 +34,12 @@ defmodule SearchAsh.Test.Invoice do
       accept [:number, :language]
     end
 
+    # NB: no `require_atomic? false` here — SearchAsh.Source sets it automatically.
     update :update do
-      require_atomic? false
       accept [:number, :deleted_at, :language]
     end
 
     destroy :destroy do
-      require_atomic? false
     end
   end
 

@@ -18,9 +18,14 @@ defmodule SearchAsh.Source do
           archived :deleted_at         # optional — truthy value marks the row archived
         end
 
-        # ... attributes + a create action ...
-        # update/destroy actions need `require_atomic? false` (stemming runs in a NIF).
+        # ... attributes + create/update/destroy actions ...
       end
+
+  The extension sets `require_atomic? false` on the update/destroy actions it augments
+  (the sync stems through a NIF and can't run in an atomic SQL statement), so you don't
+  set it yourself. Because the sync writes only to the *separate* index table (never to a
+  source attribute), it is atomic-compatible: `Ash.bulk_create`/`bulk_update`/`bulk_destroy`
+  keep the index in sync with no `strategy:` option required.
 
   On create/update it upserts a stemmed document into the index (tenant-aware). `archived`
   derives the index flag from a source attribute's truthiness (a boolean, or a
@@ -67,7 +72,9 @@ defmodule SearchAsh.Source do
           "How to derive the index `archived` flag (default `false` — always visible). " <>
             "Either an attribute name whose **truthiness** marks the row archived (works " <>
             "for a boolean flag or a `deleted_at` timestamp), or a 1-arity function " <>
-            "`record -> boolean`."
+            "`record -> boolean`. A function is called with the record as the action " <>
+            "loads it, so it must only read attributes that are loaded — avoid " <>
+            "`select_by_default? false` attributes unless you arrange to load them."
       ],
       on_destroy: [
         type: {:or, [{:literal, :remove}, {:literal, :archive}]},

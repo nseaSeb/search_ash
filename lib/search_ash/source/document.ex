@@ -32,7 +32,11 @@ defmodule SearchAsh.Source.Document do
 
   @doc """
   Whether every attribute the index needs is loaded on `record` (i.e. not `%Ash.NotLoaded{}`).
-  The sync uses this to avoid indexing from a partially-loaded record (a narrowed `select`).
+  The sync uses this to skip indexing when a searchable field, the language, or an
+  attribute-driven `archived` isn't loaded, rather than index from incomplete data.
+
+  A **function-driven** `archived` is opaque, so its inputs can't be checked here — the
+  function is responsible for only reading loaded attributes (see the `archived` docs).
   """
   def loaded?(resource, record) do
     (Info.fields(resource) ++ [Info.language_attribute(resource) | archived_attributes(resource)])

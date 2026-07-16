@@ -32,13 +32,12 @@ defmodule SearchAsh.Test.Product do
       accept [:name, :sku, :language, :discontinued]
     end
 
+    # NB: no `require_atomic? false` here — SearchAsh.Source sets it automatically.
     update :update do
-      require_atomic? false
       accept [:name, :sku, :language, :discontinued]
     end
 
     destroy :destroy do
-      require_atomic? false
     end
   end
 
