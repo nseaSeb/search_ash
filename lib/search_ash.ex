@@ -104,4 +104,31 @@ defmodule SearchAsh do
       SearchAsh.Transformers.AddSearchAction,
       SearchAsh.Transformers.AddSearchIndex
     ]
+
+  @doc """
+  Backfill the unified index for all existing rows of a `SearchAsh.Source` resource.
+
+  Streams the source and upserts each row into its configured index. For a multitenant
+  index, pass the tenant (call once per tenant):
+
+      SearchAsh.reindex(MyApp.Sales.BonDeCommande, tenant: "org_42")
+
+  Options are forwarded to the read (`:tenant`, `:domain`, `:authorize?`, …); `:tenant`
+  is also used for the upsert.
+  """
+  def reindex(source_resource, opts \\ []) do
+    index = SearchAsh.Source.Info.index(source_resource)
+    tenant = opts[:tenant]
+
+    source_resource
+    |> Ash.stream!(opts)
+    |> Stream.each(fn record ->
+      attrs = SearchAsh.Source.Document.to_attrs(source_resource, record)
+
+      index
+      |> Ash.Changeset.for_create(:upsert, attrs, tenant: tenant)
+      |> Ash.create!()
+    end)
+    |> Stream.run()
+  end
 end

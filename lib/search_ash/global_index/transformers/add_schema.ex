@@ -1,0 +1,107 @@
+defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
+  @moduledoc """
+  Adds the index columns, the `unique_source` identity (tenant-aware) and the GIN index
+  to a `SearchAsh.GlobalIndex` resource.
+  """
+  use Spark.Dsl.Transformer
+  alias Spark.Dsl.Transformer
+
+  @siblings [
+    SearchAsh.GlobalIndex.Transformers.AddSchema,
+    SearchAsh.GlobalIndex.Transformers.AddActions
+  ]
+
+  @impl true
+  def transform(dsl) do
+    search_text =
+      Transformer.get_option(dsl, [:global_index], :search_text_attribute) || :search_text
+
+    dsl
+    |> add_new_pkey()
+    |> add_attribute(:source_type, :string, allow_nil?: false, public?: true)
+    |> add_attribute(:source_id, :string, allow_nil?: false, public?: true)
+    |> add_attribute(:language, :atom,
+      allow_nil?: false,
+      public?: true,
+      constraints: [one_of: Stemmers.supported_languages()]
+    )
+    |> add_attribute(search_text, :string, allow_nil?: true, public?: true)
+    |> add_attribute(:state, :atom, allow_nil?: false, public?: true, default: :active)
+    |> add_attribute(:label, :string, public?: true)
+    |> add_identity()
+    |> add_gin_index(search_text)
+    |> then(&{:ok, &1})
+  end
+
+  defp add_new_pkey(dsl) do
+    has_pkey? =
+      dsl
+      |> Transformer.get_entities([:attributes])
+      |> Enum.any?(& &1.primary_key?)
+
+    if has_pkey? do
+      dsl
+    else
+      {:ok, attr} =
+        Ash.Resource.Builder.build_attribute(:id, :uuid,
+          primary_key?: true,
+          allow_nil?: false,
+          public?: true,
+          default: &Ash.UUID.generate/0
+        )
+
+      Transformer.add_entity(dsl, [:attributes], attr)
+    end
+  end
+
+  defp add_attribute(dsl, name, type, opts) do
+    exists? =
+      dsl
+      |> Transformer.get_entities([:attributes])
+      |> Enum.any?(&(&1.name == name))
+
+    if exists? do
+      dsl
+    else
+      {:ok, attr} = Ash.Resource.Builder.build_attribute(name, type, opts)
+      Transformer.add_entity(dsl, [:attributes], attr)
+    end
+  end
+
+  defp add_identity(dsl) do
+    keys = tenant_attribute(dsl) ++ [:source_type, :source_id]
+    {:ok, identity} = Ash.Resource.Builder.build_identity(:unique_source, keys)
+    Transformer.add_entity(dsl, [:identities], identity)
+  end
+
+  defp add_gin_index(dsl, search_text) do
+    if Transformer.get_option(dsl, [:postgres], :table) do
+      expression = "(to_tsvector('simple', #{search_text}))"
+      table = Transformer.get_option(dsl, [:postgres], :table)
+
+      {:ok, index} =
+        Transformer.build_entity(AshPostgres.DataLayer, [:postgres, :custom_indexes], :index,
+          fields: [expression],
+          using: "gin",
+          name: "#{table}_search_idx",
+          all_tenants?: true
+        )
+
+      Transformer.add_entity(dsl, [:postgres, :custom_indexes], index)
+    else
+      dsl
+    end
+  end
+
+  # Include the attribute-multitenancy tenant column in the identity so uniqueness (and
+  # the upsert target) is per-tenant.
+  defp tenant_attribute(dsl) do
+    case Transformer.get_option(dsl, [:multitenancy], :strategy) do
+      :attribute -> [Transformer.get_option(dsl, [:multitenancy], :attribute)]
+      _ -> []
+    end
+  end
+
+  @impl true
+  def before?(t), do: t not in @siblings
+end

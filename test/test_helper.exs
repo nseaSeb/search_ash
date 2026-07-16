@@ -31,4 +31,38 @@ CREATE INDEX test_articles_search_idx
 ON test_articles USING GIN (to_tsvector('simple', search_text))
 """)
 
+# Unified index (SearchAsh.GlobalIndex) + a source resource (SearchAsh.Source).
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_search_documents", [])
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_products", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_search_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  source_type text NOT NULL,
+  source_id text NOT NULL,
+  language text NOT NULL,
+  search_text text,
+  state text NOT NULL DEFAULT 'active',
+  label text,
+  UNIQUE (org_id, source_type, source_id)
+)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE INDEX test_search_documents_search_idx
+ON test_search_documents USING GIN (to_tsvector('simple', search_text))
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  name text,
+  sku text,
+  status text NOT NULL DEFAULT 'active',
+  language text NOT NULL
+)
+""")
+
 ExUnit.start()
