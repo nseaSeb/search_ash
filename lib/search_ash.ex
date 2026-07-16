@@ -84,6 +84,13 @@ defmodule SearchAsh do
         doc:
           "Match the last-typed token as a prefix (search-as-you-type): a query " <>
             "\"boulan\" matches \"boulangerie\". Set false for exact stemmed matching."
+      ],
+      rank?: [
+        type: :boolean,
+        default: true,
+        doc:
+          "Rank results by `ts_rank` (most relevant first) and expose the score as the " <>
+            "`:search_rank` calculation. Set false to only filter, leaving ordering to you."
       ]
     ]
   }
@@ -93,6 +100,7 @@ defmodule SearchAsh do
     transformers: [
       SearchAsh.Transformers.AddSearchTextAttribute,
       SearchAsh.Transformers.AddSyncChange,
+      SearchAsh.Transformers.AddSearchRank,
       SearchAsh.Transformers.AddSearchAction,
       SearchAsh.Transformers.AddSearchIndex
     ]

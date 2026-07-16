@@ -24,15 +24,25 @@ defmodule SearchAsh.Preparations.Search do
       # Nothing searchable → no filter, so a list UI shows all rows before you type.
       query
     else
-      Ash.Query.filter(
-        query,
+      query
+      |> Ash.Query.filter(
         fragment(
           "to_tsvector('simple', ?) @@ to_tsquery('simple', ?)",
           ^ref(search_text_attribute),
           ^tsquery
         )
       )
+      |> maybe_rank(SearchAsh.Info.rank?(resource), tsquery)
     end
+  end
+
+  # Order by relevance and expose the score, unless ranking is disabled.
+  defp maybe_rank(query, false, _tsquery), do: query
+
+  defp maybe_rank(query, true, tsquery) do
+    query
+    |> Ash.Query.load(search_rank: %{tsquery: tsquery})
+    |> Ash.Query.sort(search_rank: {%{tsquery: tsquery}, :desc})
   end
 
   defp normalize_language(lang, _resource) when is_atom(lang) and not is_nil(lang), do: lang

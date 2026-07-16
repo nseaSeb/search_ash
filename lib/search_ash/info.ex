@@ -25,4 +25,7 @@ defmodule SearchAsh.Info do
 
   @doc "Whether the search matches the query tokens as prefixes (search-as-you-type)."
   def prefix?(resource), do: Extension.get_opt(resource, [:search], :prefix?, true)
+
+  @doc "Whether results are ranked by ts_rank (and the :search_rank calc is exposed)."
+  def rank?(resource), do: Extension.get_opt(resource, [:search], :rank?, true)
 end

@@ -6,6 +6,7 @@ defmodule SearchAsh.Transformers.AddSearchAction do
   @siblings [
     SearchAsh.Transformers.AddSearchTextAttribute,
     SearchAsh.Transformers.AddSyncChange,
+    SearchAsh.Transformers.AddSearchRank,
     SearchAsh.Transformers.AddSearchAction,
     SearchAsh.Transformers.AddSearchIndex
   ]
