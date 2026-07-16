@@ -11,20 +11,24 @@ defmodule Blog.Search.Preparations.GlobalSearch do
   @impl true
   def prepare(query, _opts, _context) do
     term = Ash.Query.get_argument(query, :query)
-    language = Ash.Query.get_argument(query, :language) || :french
+    language = normalize_language(Ash.Query.get_argument(query, :language))
+    # Branch on the *computed* tsquery, not the raw term: a short (< min_length) or
+    # all-stopwords query yields no tokens ("") even though the term is non-blank.
+    tsquery = if is_binary(term), do: SearchCore.tsquery(term, language), else: ""
 
-    if is_binary(term) and String.trim(term) != "" do
-      tsquery = SearchCore.tsquery(term, language)
-
+    if tsquery == "" do
+      # Nothing searchable → list everything (the list UI shows all rows before typing).
+      query
+    else
       query
       |> Ash.Query.filter(
         fragment("to_tsvector('simple', search_text) @@ to_tsquery('simple', ?)", ^tsquery)
       )
       |> Ash.Query.load(rank: %{tsquery: tsquery})
       |> Ash.Query.sort(rank: {%{tsquery: tsquery}, :desc})
-    else
-      # Blank query: list everything (the list UI shows all rows before you type).
-      query
     end
   end
+
+  defp normalize_language(lang) when is_atom(lang) and not is_nil(lang), do: lang
+  defp normalize_language(_), do: :french
 end

@@ -12,11 +12,15 @@ defmodule SearchAsh.Preparations.Search do
     resource = query.resource
     search_text_attribute = SearchAsh.Info.search_text_attribute(resource)
     term = Ash.Query.get_argument(query, :query)
-    language = Ash.Query.get_argument(query, :language) || SearchAsh.Info.default_language(resource)
+    language = normalize_language(Ash.Query.get_argument(query, :language), resource)
+    # Branch on the *computed* tsquery: a short (< min_length) or all-stopwords query
+    # yields no tokens ("") even when the term is non-blank.
+    tsquery = if is_binary(term), do: SearchCore.tsquery(term, language), else: ""
 
-    if is_binary(term) and String.trim(term) != "" do
-      tsquery = SearchCore.tsquery(term, language)
-
+    if tsquery == "" do
+      # Nothing searchable → no filter, so a list UI shows all rows before you type.
+      query
+    else
       Ash.Query.filter(
         query,
         fragment(
@@ -25,9 +29,9 @@ defmodule SearchAsh.Preparations.Search do
           ^tsquery
         )
       )
-    else
-      # Blank query: no filter, so a list UI shows all rows before you type.
-      query
     end
   end
+
+  defp normalize_language(lang, _resource) when is_atom(lang) and not is_nil(lang), do: lang
+  defp normalize_language(_lang, resource), do: SearchAsh.Info.default_language(resource)
 end
