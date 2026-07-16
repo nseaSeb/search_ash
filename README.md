@@ -75,7 +75,18 @@ See [`examples/search_demo`](examples/search_demo) for a runnable multi-tenant d
 against real Postgres — per-resource and global search, a GreenAsh console, and a
 Postgres-backed test suite.
 
+## Notes
+
+- **Update actions need `require_atomic? false`.** The keep-in-sync change stems via a
+  NIF, which can't run inside an atomic SQL update, so any `update` action on a
+  search-enabled resource must set `require_atomic? false`.
+- **Ranking** is on by default (`rank?`), ordering by `ts_rank` and exposing the score as
+  the `:search_rank` calculation; set `rank?: false` to filter only.
+- The search matches the last token as a **prefix** (`prefix?`, on) and treats a **blank
+  query as "no filter"** so it composes with list UIs.
+
 ## Status
 
-MVP (`:pre_stemmed` strategy). Deferred: a `:native` per-row-`regconfig` strategy
-(no NIF, Postgres-supported languages only) and ranking (`ts_rank`/`setweight`).
+MVP, `:pre_stemmed` strategy — tested end-to-end against Postgres (`mix test`). Deferred:
+a `:native` per-row-`regconfig` strategy (no NIF, Postgres-supported languages only) and
+weighted fields (`setweight`).
