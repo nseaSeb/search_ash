@@ -300,6 +300,12 @@ defmodule SearchAsh do
     * `:tenant` — for a multitenant source. Scopes both the source stream and the index sweep,
       so prune only ever touches the tenant you name. Call once per tenant.
     * `:domain` — as for `Ash.stream!/2`.
+    * `:stream_with`, `:allow_stream_with`, `:batch_size`, `:timeout` — forwarded to the source
+      `Ash.stream!/2`. A read that can't keyset-stream needs `stream_with: :offset` (Ash streams
+      with `:keyset` by default), the same option `reindex/2` needs for such a resource.
+
+  It deliberately does **not** forward `:action`, `:filter` or anything else that would narrow
+  which rows the stream yields — that would misclassify live rows as orphans and delete them.
   """
   @spec prune(module(), keyword()) :: non_neg_integer()
   def prune(source_resource, opts \\ []) do
@@ -307,9 +313,15 @@ defmodule SearchAsh do
     refuse_unscopable_prune!(source_resource)
     tenant = opts[:tenant]
 
+    # Forward the options that control *how* the source is streamed — never *which* rows it
+    # yields. `prune/2` can't pass options through wholesale like `reindex/2` does: it forces
+    # `authorize?: false`, and it must not let `:action`/`:filter` narrow the live set (that
+    # would make live rows look like orphans and delete them). So it is an allowlist — safe
+    # against a future option that changes visibility, at the cost of adding new stream knobs
+    # here. `:stream_with`/`:allow_stream_with` matter for a read that can't keyset-stream.
     stream_opts =
       opts
-      |> Keyword.take([:tenant, :domain])
+      |> Keyword.take([:tenant, :domain, :stream_with, :allow_stream_with, :batch_size, :timeout])
       |> Keyword.put(:authorize?, false)
 
     live =

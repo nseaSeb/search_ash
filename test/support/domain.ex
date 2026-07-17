@@ -54,5 +54,9 @@ defmodule SearchAsh.Test.Domain do
       define(:create_ticket, action: :create)
       define(:update_ticket, action: :update)
     end
+
+    resource SearchAsh.Test.OffsetPage do
+      define(:create_offset_page, action: :create)
+    end
   end
 end

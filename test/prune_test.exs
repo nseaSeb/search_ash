@@ -8,12 +8,13 @@ defmodule SearchAsh.PruneTest do
   """
   use ExUnit.Case, async: false
 
-  alias SearchAsh.Test.{Domain, Invoice, LineItem, Product, Repo, SearchDocument}
+  alias SearchAsh.Test.{Domain, Invoice, LineItem, OffsetPage, Product, Repo, SearchDocument}
 
   setup do
     Ecto.Adapters.SQL.query!(
       Repo,
-      "TRUNCATE test_products, test_invoices, test_line_items, test_search_documents",
+      "TRUNCATE test_products, test_invoices, test_line_items, test_offset_pages, " <>
+        "test_search_documents",
       []
     )
 
@@ -156,6 +157,29 @@ defmodule SearchAsh.PruneTest do
     # Yet prune, reading unauthorized, sees both as live and removes neither.
     assert 0 = SearchAsh.prune(LineItem, tenant: "a")
     assert index_count() == 2
+  end
+
+  test "prune/2 forwards :stream_with for a source whose read can't keyset-stream" do
+    # OffsetPage's primary read is offset-only, so Ash.stream! (keyset by default) can't stream
+    # it — the same condition under which `reindex/2` needs `stream_with: :offset`. prune used
+    # to drop the option, so it failed on exactly these resources.
+    keep = Domain.create_offset_page!(%{title: "Accueil"}, tenant: "a")
+    gone = Domain.create_offset_page!(%{title: "Obsolete"}, tenant: "a")
+    assert index_count() == 2
+
+    # Proof the fixture reproduces the condition: without the option, streaming can't proceed.
+    assert_raise Ash.Error.Invalid.NonStreamableAction, fn ->
+      SearchAsh.prune(OffsetPage, tenant: "a")
+    end
+
+    sql!("DELETE FROM test_offset_pages WHERE id = $1", [Ecto.UUID.dump!(gone.id)])
+
+    # With it forwarded, prune streams via offset and sweeps the orphan.
+    assert 1 = SearchAsh.prune(OffsetPage, tenant: "a", stream_with: :offset)
+
+    assert index_count() == 1
+    assert [%{label: "Accueil"}] = Domain.global_search!("accueil", :fr, tenant: "a")
+    assert Ash.get!(OffsetPage, keep.id, tenant: "a", authorize?: false).title == "Accueil"
   end
 
   test "prune/2 rejects :actor and authorize?: true, but accepts authorize?: false" do

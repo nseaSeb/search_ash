@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1
+
+### Fixed
+
+- **`prune/2` failed on a source whose read cannot be keyset-streamed.** It forwarded only
+  `:tenant` and `:domain` to the source `Ash.stream!/2`, dropping `:stream_with` — so a
+  resource whose default read is offset-only (or otherwise not keyset-streamable) raised
+  `Ash.Error.Invalid.NonStreamableAction`, the very case for which `reindex/2` already needed
+  `stream_with: :offset`. `prune/2` now forwards `:stream_with`, `:allow_stream_with`,
+  `:batch_size` and `:timeout` — the options that control *how* the source is streamed. It
+  still refuses to forward anything that changes *which* rows the stream yields (`:action`,
+  `:filter`, …), since narrowing the live set would misclassify live rows as orphans and
+  delete them.
+
 ## 0.3.0
 
 ### Added

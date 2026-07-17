@@ -158,6 +158,18 @@ CREATE TABLE test_tickets (
 )
 """)
 
+# A source whose read is offset-only (not keyset-streamable), for the prune stream_with test
+# (see SearchAsh.Test.OffsetPage).
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_offset_pages", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_offset_pages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  title text
+)
+""")
+
 # Soft delete via `base_filter`: the row stays, `deleted_at` hides it (see
 # SearchAsh.Test.TrashableNote).
 Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_trashable_notes", [])
