@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.1
+
+Documentation fix. No code change to the library itself.
+
+### Fixed
+
+- **0.2.0 overstated an authorization limitation, and steered people away from something
+  they can do.** It said the index "enforces tenant isolation and nothing finer" and that
+  `:global_search` "never consults the actor". The first part is right — the index does not
+  *inherit* the policies of the resources feeding it — but the conclusion was wrong:
+  `:global_search` is a plain Ash read action, so **policies on the index resource itself
+  compose with it normally**.
+
+  A role that gates *which kinds of thing* a user may see therefore works today:
+
+      # in your SearchAsh.GlobalIndex resource
+      policies do
+        policy action_type(:read) do
+          authorize_if expr(source_type in ^actor(:visible_types))
+        end
+      end
+
+  Two things bite: `source_type` is stored as a **string**, so the actor's list must hold
+  strings; and Ash policies need a SAT solver (`:picosat_elixir` or `:simple_sat`).
+
+  What genuinely does not work is **row-level** authorization: no owner, team, or
+  per-record visibility flag can reach an index row, so a policy cannot key off one.
+  Post-filtering the results breaks ranking and pagination. `search do … end` on the
+  source is the answer there — it queries the source table, so its policies apply — at the
+  cost of cross-entity search. Note the two are different searches with different security
+  models, not one search with both properties.
+
+  The capability is now covered by tests rather than by prose alone.
+
 ## 0.2.0
 
 ### Fixed

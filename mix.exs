@@ -1,7 +1,7 @@
 defmodule SearchAsh.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.2.1"
   @source_url "https://github.com/nseaSeb/search_ash"
 
   def project do
@@ -39,7 +39,9 @@ defmodule SearchAsh.MixProject do
       {:ash, "~> 3.29"},
       {:ash_postgres, "~> 2.10"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false}
+      {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false},
+      # Ash policies need a SAT solver; simple_sat is pure Elixir, fitting for a NIF-free stack.
+      {:simple_sat, "~> 0.1", only: :test}
     ]
   end
 

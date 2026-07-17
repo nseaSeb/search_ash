@@ -24,6 +24,8 @@ defmodule SearchAsh.Test.Domain do
       define(:update_static_page, action: :update)
     end
 
+    resource SearchAsh.Test.SecuredDocument
+
     resource SearchAsh.Test.Invoice do
       define(:create_invoice, action: :create)
       define(:update_invoice, action: :update)
