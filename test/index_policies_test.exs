@@ -5,92 +5,106 @@ defmodule SearchAsh.IndexPoliciesTest do
   compose with it. That is what makes role-to-entity-type visibility possible, and it is
   documented as a supported pattern, so it is pinned here.
 
-  What this cannot do is row-level authorization: an index row carries no owner or team.
-  The last test states that boundary so nobody mistakes the guarantee for a stronger one.
+  The second half matters just as much: `SearchAsh.Source`'s own mirroring must keep
+  working when an index carries policies. It reads and writes the index internally with no
+  actor, so without `authorize?: false` a policied index broke every destroy — while the
+  documentation was telling people to add exactly those policies.
   """
   use ExUnit.Case, async: false
   require Ash.Query
 
-  alias SearchAsh.Test.{Domain, Repo, SecuredDocument}
+  alias SearchAsh.Test.{Domain, Repo, SecuredDocument, SecuredProduct}
 
   setup do
     Ecto.Adapters.SQL.query!(
       Repo,
-      "TRUNCATE test_products, test_invoices, test_search_documents",
+      "TRUNCATE test_secured_products, test_secured_invoices, test_secured_documents",
       []
     )
 
-    # One term, two entity types, one index.
-    Domain.create_product!(%{name: "Vis inox", sku: "V1"}, tenant: "a")
-    Domain.create_invoice!(%{number: "Vis facture 42"}, tenant: "a")
+    # One term, two entity types, one policied index.
+    Domain.create_secured_product!(%{name: "Vis inox"}, tenant: "a")
+    Domain.create_secured_invoice!(%{number: "Vis facture 42"}, tenant: "a")
     :ok
   end
 
-  defp search(actor) do
+  defp search(actor, query \\ "vis", tenant \\ "a") do
     SecuredDocument
-    |> Ash.Query.for_read(:global_search, %{query: "vis", language: :fr})
-    |> Ash.read!(tenant: "a", actor: actor, authorize?: true)
-    |> Enum.map(& &1.source_type)
-    |> Enum.sort()
+    |> Ash.Query.for_read(:global_search, %{query: query, language: :fr})
+    |> Ash.read!(tenant: tenant, actor: actor, authorize?: true)
   end
 
-  test "unauthorized, the index returns every matching entity type" do
-    all =
-      SecuredDocument
-      |> Ash.Query.for_read(:global_search, %{query: "vis", language: :fr})
-      |> Ash.read!(tenant: "a", authorize?: false)
-      |> Enum.map(& &1.source_type)
-      |> Enum.sort()
+  defp types(results), do: results |> Enum.map(& &1.source_type) |> Enum.sort()
 
-    assert all == ["invoice", "product"]
+  describe "policies on the index filter :global_search" do
+    test "unauthorized, the index returns every matching entity type" do
+      all =
+        SecuredDocument
+        |> Ash.Query.for_read(:global_search, %{query: "vis", language: :fr})
+        |> Ash.read!(tenant: "a", authorize?: false)
+
+      assert types(all) == ["invoice", "product"]
+    end
+
+    test "a policy filters by the actor's role" do
+      assert types(search(%{visible_types: ["invoice"]})) == ["invoice"]
+      assert types(search(%{visible_types: ["product"]})) == ["product"]
+      assert types(search(%{visible_types: ["invoice", "product"]})) == ["invoice", "product"]
+    end
+
+    test "an actor allowed nothing sees nothing, rather than everything" do
+      assert search(%{visible_types: []}) == []
+    end
+
+    test "the policy narrows the search, it does not replace it" do
+      assert types(search(%{visible_types: ["invoice", "product"]}, "inox")) == ["product"]
+      assert search(%{visible_types: ["invoice", "product"]}, "inexistant") == []
+    end
+
+    test "tenant isolation still applies on top of the policy" do
+      Domain.create_secured_product!(%{name: "Vis autre org"}, tenant: "b")
+
+      assert Enum.map(search(%{visible_types: ["product"]}, "vis", "b"), & &1.label) ==
+               ["Vis autre org"]
+    end
   end
 
-  test "a policy on the index filters :global_search by the actor's role" do
-    assert search(%{visible_types: ["invoice"]}) == ["invoice"]
-    assert search(%{visible_types: ["product"]}) == ["product"]
-    assert search(%{visible_types: ["invoice", "product"]}) == ["invoice", "product"]
-  end
+  describe "policies on the index do not break SearchAsh.Source's machinery" do
+    # Regression: sync/remove read and wrote the index with no actor and no
+    # `authorize?: false`, so a policied index made every destroy raise Forbidden.
+    # Mirroring is machinery — the source write was already authorized by the source's own
+    # policies, and the index's policies answer a different question (what may a user
+    # *find*).
 
-  test "an actor allowed nothing sees nothing, rather than everything" do
-    assert search(%{visible_types: []}) == []
-  end
+    test "creating a source indexes it" do
+      assert Repo.aggregate(SecuredDocument, :count) == 2
+    end
 
-  test "the policy composes with the search filter, it does not replace it" do
-    # A term matching only the product: the invoice-only actor gets nothing, and the
-    # product-only actor still has to match the query.
-    hits =
-      SecuredDocument
-      |> Ash.Query.for_read(:global_search, %{query: "inox", language: :fr})
-      |> Ash.read!(tenant: "a", actor: %{visible_types: ["invoice", "product"]}, authorize?: true)
+    test "destroying a source removes its index row" do
+      [product] = Ash.read!(SecuredProduct, tenant: "a")
+      Domain.destroy_secured_product!(product, tenant: "a")
 
-    assert Enum.map(hits, & &1.source_type) == ["product"]
-  end
+      assert Repo.aggregate(SecuredDocument, :count) == 1
+      assert search(%{visible_types: ["product"]}) == []
+    end
 
-  test "tenant isolation still applies on top of the policy" do
-    Domain.create_product!(%{name: "Vis autre org", sku: "V2"}, tenant: "b")
+    test "reindex/2 backfills" do
+      Ecto.Adapters.SQL.query!(Repo, "TRUNCATE test_secured_documents", [])
+      assert Repo.aggregate(SecuredDocument, :count) == 0
 
-    hits =
-      SecuredDocument
-      |> Ash.Query.for_read(:global_search, %{query: "vis", language: :fr})
-      |> Ash.read!(tenant: "b", actor: %{visible_types: ["product"]}, authorize?: true)
+      SearchAsh.reindex(SecuredProduct, tenant: "a")
 
-    assert Enum.map(hits, & &1.label) == ["Vis autre org"]
+      assert Repo.aggregate(SecuredDocument, :count) == 1
+    end
   end
 
   test "the boundary: an index row carries nothing to authorize a single row on" do
     # Only these reach an index row, so a policy can key off `source_type` but never off
     # an owner or a team. Row-level visibility needs `search do … end` on the source; what
     # a result exposes is controlled by `label_field`.
-    attrs =
-      SearchAsh.Source.Document.to_attrs(SearchAsh.Test.Product, %{
-        id: "1",
-        name: "Vis",
-        sku: "V",
-        language: :fr,
-        discontinued: false
-      })
+    attrs = SearchAsh.Source.Document.to_attrs(SecuredProduct, %{id: "1", name: "Vis"})
 
-    assert Map.keys(attrs) |> Enum.sort() ==
+    assert Enum.sort(Map.keys(attrs)) ==
              [:archived, :label, :language, :search_text, :source_id, :source_type]
   end
 end

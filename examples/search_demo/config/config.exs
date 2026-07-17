@@ -2,7 +2,7 @@ import Config
 
 config :search_demo,
   ecto_repos: [SearchDemo.Repo],
-  ash_domains: [SearchDemo.Blog, SearchDemo.Search, SearchDemo.Sales]
+  ash_domains: [SearchDemo.Accounts, SearchDemo.Blog, SearchDemo.Search, SearchDemo.Sales]
 
 config :search_demo, SearchDemo.Repo,
   username: System.get_env("PGUSER", "postgres"),

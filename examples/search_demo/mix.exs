@@ -28,6 +28,9 @@ defmodule SearchDemo.MixProject do
       # for — the demo must exercise the monorepo's working tree, not a published build.
       {:search_core, path: "../../../search_core", override: true},
       {:ash, "~> 3.29"},
+      # Ash policies need a SAT solver. simple_sat is pure Elixir — fitting for a stack
+      # that stems without a NIF. :picosat_elixir is the faster, NIF-based alternative.
+      {:simple_sat, "~> 0.1"},
       {:ash_postgres, "~> 2.10"},
       # GreenAsh: a terminal-style admin console over the Ash resources (dev only).
       {:green_ash, "~> 0.1"},

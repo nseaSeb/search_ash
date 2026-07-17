@@ -53,12 +53,16 @@ defmodule SearchAsh.Source.Changes.Sync do
   # can hand them back to Ash for dispatch — otherwise they'd be "missed" inside the
   # source action's transaction). Returns [] for a partially-loaded record (narrowed
   # `select`), which is left as-is rather than indexed from incomplete data.
+  # `authorize?: false`: mirroring is machinery, not a user action. The source write it
+  # rides on was already authorized by the source's own policies, and the index's policies
+  # express what a user may *find* — a different question. Re-authorizing the mirror
+  # against them would make `SearchAsh.Source` break the moment an index carries policies.
   defp upsert(resource, record, tenant) do
     if Document.loaded?(resource, record) do
       {_indexed, notifications} =
         Info.index(resource)
         |> Ash.Changeset.for_create(:upsert, Document.to_attrs(resource, record), tenant: tenant)
-        |> Ash.create!(return_notifications?: true)
+        |> Ash.create!(authorize?: false, return_notifications?: true)
 
       notifications
     else

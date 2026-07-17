@@ -26,6 +26,15 @@ defmodule SearchAsh.Test.Domain do
 
     resource SearchAsh.Test.SecuredDocument
 
+    resource SearchAsh.Test.SecuredProduct do
+      define :create_secured_product, action: :create
+      define :destroy_secured_product, action: :destroy
+    end
+
+    resource SearchAsh.Test.SecuredInvoice do
+      define :create_secured_invoice, action: :create
+    end
+
     resource SearchAsh.Test.Invoice do
       define(:create_invoice, action: :create)
       define(:update_invoice, action: :update)

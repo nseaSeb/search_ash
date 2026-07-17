@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.2
+
+### Fixed
+
+- **An index carrying policies broke every destroy on its sources — and 0.2.1's docs told
+  you to add exactly those policies.** `SearchAsh.Source`'s sync and remove changes read
+  and wrote the index with no actor and no `authorize?: false`. Since an Ash domain
+  authorizes by default, those internal reads/writes were checked against the index's own
+  policies and refused: `on_destroy :remove` raised `Ash.Error.Forbidden`, and `reindex/2`
+  and the upsert were one policy away from the same fate.
+
+  Mirroring is machinery, not a user action: the source write it rides on was already
+  authorized by the source's own policies, and the index's policies answer a different
+  question — what a user may *find*. All internal index access is now `authorize?: false`.
+  `reindex/2` still forwards `:authorize?` to the **source** read, so you keep deciding
+  whose rows get backfilled.
+
+  Found by giving [`examples/search_demo`](examples/search_demo) real roles rather than
+  trusting the documented pattern. It is now covered both there and by regression tests
+  that fail without the fix.
+
+### Added
+
+- **`examples/search_demo` demonstrates roles end to end.** A `SearchDemo.Accounts.User`
+  with a role (`:admin` finds everything, `:commercial` factures + clients, `:support`
+  clients), policies on the index, and tests showing the same query returning different
+  rows per role — including that no actor is refused outright rather than served
+  everything. The GreenAsh console at `/cli` takes `:actor user <id>`, so you can switch
+  role and watch results change.
+
 ## 0.2.1
 
 Documentation fix. No code change to the library itself.

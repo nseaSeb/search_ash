@@ -159,8 +159,74 @@ defmodule SearchDemo.SearchTest do
     end
   end
 
-  defp search(query, tenant),
-    do: SearchDemo.Search.global_search!(query, :fr, tenant: tenant)
+  # These tests are about indexing, ranking and tenancy — not roles — so they search as an
+  # admin, who finds every entity type. Roles have their own describe block.
+  describe "roles — what a user may find" do
+    setup do
+      SearchDemo.Sales.create_facture!(
+        %{numero: "F-100", client_nom: "Dupont", description: "Réparation toiture."},
+        tenant: "org_a"
+      )
+
+      SearchDemo.Sales.create_client!(%{nom: "Dupont SARL", notes: "Client historique."},
+        tenant: "org_a"
+      )
+
+      SearchDemo.Sales.create_produit!(%{reference: "P-1", libelle: "Tuile Dupont", description: "Toiture."},
+        tenant: "org_a"
+      )
+
+      :ok
+    end
+
+    defp types(results), do: results |> Enum.map(& &1.source_type) |> Enum.sort() |> Enum.uniq()
+
+    test ":admin finds every entity type" do
+      assert types(search("dupont", "org_a", user(:admin, "org_a"))) ==
+               ["client", "facture", "produit"]
+    end
+
+    test ":commercial finds factures and clients, never produits" do
+      assert types(search("dupont", "org_a", user(:commercial, "org_a"))) == ["client", "facture"]
+    end
+
+    test ":support finds clients only" do
+      results = search("dupont", "org_a", user(:support, "org_a"))
+
+      assert types(results) == ["client"]
+      # The facture's label never reaches them — not even to say it exists.
+      refute "F-100" in labels(results)
+    end
+
+    test "no actor is refused outright: the policies fail closed" do
+      # With no actor every clause is statically false, so Ash refuses at strict-check
+      # time rather than running a query that filters everything out. With an actor the
+      # same expressions become a SQL filter — hence the roles above returning subsets.
+      assert_raise Ash.Error.Forbidden, fn ->
+        SearchDemo.Search.global_search!("dupont", :fr, tenant: "org_a")
+      end
+    end
+
+    test "a role narrows the search, it does not replace it" do
+      # :commercial may find factures, but still only the ones matching the query.
+      assert labels(search("toiture", "org_a", user(:commercial, "org_a"))) == ["F-100"]
+      assert search("inexistant", "org_a", user(:commercial, "org_a")) == []
+    end
+
+    test "roles compose with tenant isolation, they do not bypass it" do
+      SearchDemo.Sales.create_client!(%{nom: "Dupont autre org"}, tenant: "org_b")
+
+      assert labels(search("dupont", "org_b", user(:admin, "org_b"))) == ["Dupont autre org"]
+    end
+  end
+
+  defp search(query, tenant), do: search(query, tenant, user(:admin, tenant))
+
+  defp search(query, tenant, actor),
+    do: SearchDemo.Search.global_search!(query, :fr, tenant: tenant, actor: actor)
+
+  defp user(role, tenant),
+    do: SearchDemo.Accounts.create_user!(%{nom: to_string(role), role: role}, tenant: tenant)
 
   defp labels(results), do: results |> Enum.map(& &1.label) |> Enum.sort()
 end

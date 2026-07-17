@@ -45,6 +45,10 @@ defmodule SearchAsh.Source.Changes.Remove do
     end
   end
 
+  # `authorize?: false`: mirroring is machinery, not a user action. The source write it
+  # rides on was already authorized by the source's own policies, and the index's policies
+  # express what a user may *find* — a different question. Re-authorizing the mirror
+  # against them would make `SearchAsh.Source` break the moment an index carries policies.
   defp remove(resource, record, tenant) do
     index = Info.index(resource)
     source_type = Info.source_type(resource)
@@ -52,8 +56,10 @@ defmodule SearchAsh.Source.Changes.Remove do
 
     index
     |> Ash.Query.filter(source_type == ^source_type and source_id == ^source_id)
-    |> Ash.read!(tenant: tenant)
-    |> Enum.flat_map(&Ash.destroy!(&1, tenant: tenant, return_notifications?: true))
+    |> Ash.read!(tenant: tenant, authorize?: false)
+    |> Enum.flat_map(
+      &Ash.destroy!(&1, tenant: tenant, authorize?: false, return_notifications?: true)
+    )
   end
 
   # Flip `archived` on the existing index row(s), reusing the row's own already-stemmed
@@ -67,12 +73,12 @@ defmodule SearchAsh.Source.Changes.Remove do
 
     index
     |> Ash.Query.filter(source_type == ^source_type and source_id == ^source_id)
-    |> Ash.read!(tenant: tenant)
+    |> Ash.read!(tenant: tenant, authorize?: false)
     |> Enum.flat_map(fn row ->
       {_indexed, notifications} =
         index
         |> Ash.Changeset.for_create(:upsert, archived_attrs(row), tenant: tenant)
-        |> Ash.create!(return_notifications?: true)
+        |> Ash.create!(authorize?: false, return_notifications?: true)
 
       notifications
     end)

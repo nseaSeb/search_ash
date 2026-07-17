@@ -65,6 +65,42 @@ CREATE TABLE test_products (
 )
 """)
 
+# A policied index, with real sources feeding it: the machinery must keep working when an
+# index carries policies, and a shared table would not prove that.
+for t <- ~w(test_secured_documents test_secured_products test_secured_invoices) do
+  Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS #{t}", [])
+end
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_secured_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  source_type text NOT NULL,
+  source_id text NOT NULL,
+  language text NOT NULL,
+  search_text text,
+  archived boolean NOT NULL DEFAULT false,
+  label text,
+  UNIQUE (org_id, source_type, source_id)
+)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_secured_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  name text
+)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_secured_invoices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  number text
+)
+""")
+
 Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_static_pages", [])
 
 # Deliberately has no `language` column: this resource fixes its language statically.

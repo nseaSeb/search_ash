@@ -1,9 +1,9 @@
 defmodule SearchAsh.Test.SecuredDocument do
   @moduledoc false
-  # A `SearchAsh.GlobalIndex` that carries its own policies, over the same table as
-  # `SearchAsh.Test.SearchDocument`. Pins the documented capability: the index does not
-  # inherit its sources' policies, but `:global_search` is a plain read action, so
-  # policies here compose with it.
+  # A GlobalIndex carrying its own policies, fed by real SearchAsh.Source resources.
+  # Two things depend on that being real rather than a table shared with an unpolicied
+  # index: the role tests, and the regression that the sync/remove machinery keeps working
+  # when an index has policies.
   use Ash.Resource,
     domain: SearchAsh.Test.Domain,
     data_layer: AshPostgres.DataLayer,
@@ -11,7 +11,7 @@ defmodule SearchAsh.Test.SecuredDocument do
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "test_search_documents"
+    table "test_secured_documents"
     repo SearchAsh.Test.Repo
   end
 
@@ -35,5 +35,84 @@ defmodule SearchAsh.Test.SecuredDocument do
   attributes do
     uuid_primary_key :id
     attribute :org_id, :string, allow_nil?: false, public?: true
+  end
+end
+
+defmodule SearchAsh.Test.SecuredProduct do
+  @moduledoc false
+  use Ash.Resource,
+    domain: SearchAsh.Test.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
+
+  postgres do
+    table "test_secured_products"
+    repo SearchAsh.Test.Repo
+  end
+
+  multitenancy do
+    strategy :attribute
+    attribute :org_id
+    global? true
+  end
+
+  searchable do
+    index SearchAsh.Test.SecuredDocument
+    source_type :product
+    fields [:name]
+    label_field :name
+    language :fr
+  end
+
+  actions do
+    defaults [:read]
+    create :create, do: accept([:name])
+    update :update, do: accept([:name])
+    destroy :destroy
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :org_id, :string, allow_nil?: false, public?: true
+    attribute :name, :string, public?: true
+  end
+end
+
+defmodule SearchAsh.Test.SecuredInvoice do
+  @moduledoc false
+  use Ash.Resource,
+    domain: SearchAsh.Test.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
+
+  postgres do
+    table "test_secured_invoices"
+    repo SearchAsh.Test.Repo
+  end
+
+  multitenancy do
+    strategy :attribute
+    attribute :org_id
+    global? true
+  end
+
+  searchable do
+    index SearchAsh.Test.SecuredDocument
+    source_type :invoice
+    fields [:number]
+    label_field :number
+    language :fr
+  end
+
+  actions do
+    defaults [:read]
+    create :create, do: accept([:number])
+    destroy :destroy
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :org_id, :string, allow_nil?: false, public?: true
+    attribute :number, :string, public?: true
   end
 end
