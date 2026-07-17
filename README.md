@@ -242,6 +242,19 @@ Know these before adopting — they're deliberate trade-offs, not surprises:
     resource's policies. This index answers "what may this user *find*", not "what may
     they *do*" — don't duplicate an authorization that already lives downstream.
 
+  A result carries `(source_type, source_id)`, so you *can* check rights again when
+  rendering. Whether that is sound depends on where the bulk of the filtering happens:
+
+  - **As a safety net, over a policy that already filters in SQL** — fine. It drops nothing
+    or almost nothing, ranking is untouched, and a page of ten showing seven is invisible.
+  - **As the primary filter** — broken. Postgres ranked and paginated over rows you then
+    throw away, so page 1 can come back empty while the real matches sit on page 5.
+
+  Either way, count in the view rather than with `Ash.count` on the action: the action
+  counts what SQL matched, before your render-time filtering. With a net that drops nothing
+  the two agree — and the day they disagree, the count is the early symptom, before
+  pagination goes wrong.
+
   If you genuinely need row-level *read* filtering with cross-entity ranking, nothing here
   gives it to you today, and copying ACLs into the index is a trap: authorization facts
   change independently of content (an ACL edit, someone leaving a team), so nothing would

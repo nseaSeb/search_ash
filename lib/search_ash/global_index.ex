@@ -65,6 +65,13 @@ defmodule SearchAsh.GlobalIndex do
   not "what may they *do*" — routing to the object applies the source's policies, so do not
   mirror write permissions here.
 
+  A result carries `(source_type, source_id)`, so you can re-check rights when rendering.
+  That is sound **as a safety net over a policy that already filters in SQL** — it drops
+  almost nothing and ranking is untouched. It is not sound **as the primary filter**:
+  Postgres ranked and paginated over rows you then discard, so page 1 can come back empty
+  while the matches sit on page 5. Either way, count in the view — `Ash.count` on the
+  action counts what SQL matched, before any render-time filtering.
+
   For real row-level *read* filtering, use per-resource `SearchAsh` (`search do … end`): it
   queries the source table, so your policies apply, at the cost of cross-entity search.
   Copying ACLs into the index is a trap — authorization facts change independently of
