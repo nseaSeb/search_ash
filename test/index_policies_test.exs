@@ -79,8 +79,8 @@ defmodule SearchAsh.IndexPoliciesTest do
 
   test "the boundary: an index row carries nothing to authorize a single row on" do
     # Only these reach an index row, so a policy can key off `source_type` but never off
-    # an owner or a team. Row-level visibility needs `search do … end` on the source, or
-    # the `extra_attrs` hook on the roadmap.
+    # an owner or a team. Row-level visibility needs `search do … end` on the source; what
+    # a result exposes is controlled by `label_field`.
     attrs =
       SearchAsh.Source.Document.to_attrs(SearchAsh.Test.Product, %{
         id: "1",

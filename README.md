@@ -231,12 +231,23 @@ Know these before adopting — they're deliberate trade-offs, not surprises:
 
   **Row-level ownership does not.** There is no way to carry an `owner_id`, a team, or a
   per-record visibility flag into an index row — `SearchAsh.Source` writes a fixed set of
-  columns. If a user may only see *some* invoices rather than all or none, this index
-  cannot express it: post-filtering the results breaks ranking and pagination (you'd
-  filter *after* ranking, so a page can come back empty), which is the standard
-  denormalized-index problem. Use `search do … end` on each resource there — it queries
-  the source table, so your policies apply, at the cost of cross-entity search. The
-  `extra_attrs` hook on the roadmap is what would close this.
+  columns. If a user may see *some* invoices rather than all or none, this index cannot
+  express it, and results would carry the `label` of rows they cannot open. Two things to
+  know before that worries you:
+
+  - **You choose what a result exposes.** `label_field` is yours: point it at a reference
+    (`label_field :numero`) rather than at something sensitive, and a result reveals that
+    a match exists without revealing what it says.
+  - **Do not mirror write permissions here.** Routing to the object applies the source
+    resource's policies. This index answers "what may this user *find*", not "what may
+    they *do*" — don't duplicate an authorization that already lives downstream.
+
+  If you genuinely need row-level *read* filtering with cross-entity ranking, nothing here
+  gives it to you today, and copying ACLs into the index is a trap: authorization facts
+  change independently of content (an ACL edit, someone leaving a team), so nothing would
+  trigger a re-index, and a stale index row is a security incident rather than a cosmetic
+  one. Use `search do … end` on each resource instead — it queries the source table, so
+  your policies apply, at the cost of cross-entity search.
 
 - **Indexing is synchronous, in the same transaction as the write.** The sync runs in an
   `after_action` hook using the source's repo, so the index upsert commits (or rolls back)
@@ -271,10 +282,6 @@ MVP, `:pre_stemmed` strategy — tested end-to-end against Postgres (`mix test`)
 
 Roadmap, roughly in order of how often it bites:
 
-- **`extra_attrs` on `searchable do`** — a `record -> map` hook letting you carry your own
-  columns (an `owner_id`, a team, a visibility flag) into the index row, plus the matching
-  filter on `:global_search`. This is what unlocks **intra-tenant authorization** for the
-  global index; see the first limitation above.
 - **Async indexing** — an `indexing_strategy :sync | :notify | :manual` option on
   `SearchAsh.Source`, with no hard Oban dependency (`:notify` emits an Ash notification,
   `:manual` lets you drive a durable job).

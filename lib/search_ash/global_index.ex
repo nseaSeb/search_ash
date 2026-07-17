@@ -58,12 +58,18 @@ defmodule SearchAsh.GlobalIndex do
   need a SAT solver (`:picosat_elixir` or `:simple_sat`).
 
   **Row-level ownership does not.** No `owner_id`, team, or per-record visibility flag can
-  reach an index row — `SearchAsh.Source` writes a fixed set of columns. Post-filtering the
-  results breaks ranking and pagination (you would filter *after* ranking, so a page can
-  come back empty), which is the standard denormalized-index problem. Use per-resource
-  `SearchAsh` (`search do … end`) there: it queries the source table, so your policies
-  apply, at the cost of cross-entity search. The `extra_attrs` hook on the roadmap is what
-  would close this.
+  reach an index row — `SearchAsh.Source` writes a fixed set of columns — so results would
+  carry the `label` of rows a user cannot open. Note that `label_field` is yours: point it
+  at a reference rather than at something sensitive and a result reveals that a match
+  exists, not what it says. Note too that this index answers "what may this user *find*",
+  not "what may they *do*" — routing to the object applies the source's policies, so do not
+  mirror write permissions here.
+
+  For real row-level *read* filtering, use per-resource `SearchAsh` (`search do … end`): it
+  queries the source table, so your policies apply, at the cost of cross-entity search.
+  Copying ACLs into the index is a trap — authorization facts change independently of
+  content, so nothing would trigger a re-index, and a stale index row is a security
+  incident rather than a cosmetic one.
   """
 
   @global_index %Spark.Dsl.Section{
