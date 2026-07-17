@@ -86,6 +86,11 @@ CREATE TABLE test_secured_documents (
 """)
 
 Ecto.Adapters.SQL.query!(Repo, """
+CREATE INDEX test_secured_documents_search_idx
+ON test_secured_documents USING GIN (to_tsvector('simple', search_text))
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
 CREATE TABLE test_secured_products (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id text NOT NULL,

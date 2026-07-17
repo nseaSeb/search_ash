@@ -66,16 +66,11 @@ defmodule SearchDemo.Search.Document do
       authorize_if expr(^actor(:role) == :support and source_type == "client")
     end
 
-    # The index is written by SearchAsh.Source inside the source's transaction, on behalf
-    # of whoever is writing the source row. Its own policies guard that write, so the
-    # mirror is not the place to re-litigate them.
-    policy action_type(:create) do
-      authorize_if always()
-    end
-
-    policy action_type(:destroy) do
-      authorize_if always()
-    end
+    # Nothing else is declared on purpose. `SearchAsh.Source` mirrors rows with
+    # `authorize?: false` — the source write it rides on was already authorized — so the
+    # extension needs no policy here. Ash refuses an action no policy matches, which means
+    # a *manual* write to this index is refused. That is the right default for a table
+    # nobody should be hand-editing: grant it explicitly if you ever need to.
   end
 
   attributes do

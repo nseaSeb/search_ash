@@ -17,7 +17,8 @@ defmodule SearchDemo.SearchTest do
           SearchDemo.Post,
           SearchDemo.Sales.Facture,
           SearchDemo.Sales.Client,
-          SearchDemo.Sales.Produit
+          SearchDemo.Sales.Produit,
+          SearchDemo.Accounts.User
         ] do
       Repo.delete_all(schema)
     end
@@ -159,8 +160,6 @@ defmodule SearchDemo.SearchTest do
     end
   end
 
-  # These tests are about indexing, ranking and tenancy — not roles — so they search as an
-  # admin, who finds every entity type. Roles have their own describe block.
   describe "roles — what a user may find" do
     setup do
       SearchDemo.Sales.create_facture!(
@@ -172,7 +171,8 @@ defmodule SearchDemo.SearchTest do
         tenant: "org_a"
       )
 
-      SearchDemo.Sales.create_produit!(%{reference: "P-1", libelle: "Tuile Dupont", description: "Toiture."},
+      SearchDemo.Sales.create_produit!(
+        %{reference: "P-1", libelle: "Tuile Dupont", description: "Toiture."},
         tenant: "org_a"
       )
 
@@ -213,6 +213,31 @@ defmodule SearchDemo.SearchTest do
       assert search("inexistant", "org_a", user(:commercial, "org_a")) == []
     end
 
+    test "the index refuses a hand-written row, while the extension still mirrors freely" do
+      # No create policy is declared, and Ash refuses an action no policy matches — so the
+      # index cannot be hand-edited. The extension is unaffected: it mirrors with
+      # `authorize?: false`, because the source write it rides on was already authorized.
+      assert_raise Ash.Error.Forbidden, fn ->
+        SearchDemo.Search.Document
+        |> Ash.Changeset.for_create(
+          :upsert,
+          %{
+            source_type: "facture",
+            source_id: "forge",
+            language: :fr,
+            search_text: "injecte",
+            archived: false,
+            label: "Ligne forgee"
+          },
+          tenant: "org_a"
+        )
+        |> Ash.create!()
+      end
+
+      # The mirror still works — the three rows from setup are indexed.
+      assert Repo.aggregate(Document, :count) == 3
+    end
+
     test "roles compose with tenant isolation, they do not bypass it" do
       SearchDemo.Sales.create_client!(%{nom: "Dupont autre org"}, tenant: "org_b")
 
@@ -220,13 +245,30 @@ defmodule SearchDemo.SearchTest do
     end
   end
 
+  # These tests are about indexing, ranking and tenancy — not roles — so they search as an
+  # admin, who finds every entity type. Roles have their own describe block.
   defp search(query, tenant), do: search(query, tenant, user(:admin, tenant))
 
   defp search(query, tenant, actor),
     do: SearchDemo.Search.global_search!(query, :fr, tenant: tenant, actor: actor)
 
-  defp user(role, tenant),
-    do: SearchDemo.Accounts.create_user!(%{nom: to_string(role), role: role}, tenant: tenant)
+  # Memoised per (role, tenant): inserting a fresh row on every search would litter the
+  # table, and an actor only has to carry a role.
+  defp user(role, tenant) do
+    key = {:user, role, tenant}
+
+    case Process.get(key) do
+      nil ->
+        user =
+          SearchDemo.Accounts.create_user!(%{nom: to_string(role), role: role}, tenant: tenant)
+
+        Process.put(key, user)
+        user
+
+      user ->
+        user
+    end
+  end
 
   defp labels(results), do: results |> Enum.map(& &1.label) |> Enum.sort()
 end

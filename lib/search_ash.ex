@@ -114,9 +114,12 @@ defmodule SearchAsh do
       SearchAsh.reindex(MyApp.Sales.BonDeCommande, tenant: "org_42")
 
   Options are forwarded to the **source** read (`:tenant`, `:domain`, `:authorize?`, …), so
-  you decide whose rows get backfilled. The index upsert itself is not authorized: it
-  mirrors rows the read already let through, and the index's policies are about what a user
-  may *find*, not about whether the mirror may happen.
+  you decide whose rows get backfilled; `:tenant` also scopes the index upsert, so mirrored
+  rows land in the same tenant they came from.
+
+  The upsert itself is not authorized: it mirrors rows the read already let through, and
+  the index's policies are about what a user may *find*, not about whether the mirror may
+  happen.
   """
   def reindex(source_resource, opts \\ []) do
     index = SearchAsh.Source.Info.index(source_resource)
