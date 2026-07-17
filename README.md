@@ -1,5 +1,7 @@
 # search_ash
 
+[![CI](https://github.com/nseaSeb/search_ash/actions/workflows/ci.yml/badge.svg)](https://github.com/nseaSeb/search_ash/actions/workflows/ci.yml)
+
 [Ash](https://ash-hq.org) extensions for **multilingual full-text search** on Postgres —
 per-resource (`search do … end`) and **global cross-entity** search (a unified index).
 No hand-written migrations, changes or SQL.
@@ -168,6 +170,29 @@ MyApp.Search.global_search!("dupont", :fr, tenant: "org_42")
 SearchAsh.reindex(MyApp.Sales.BonDeCommande, tenant: "org_42")
 ```
 
+**After a write that bypassed Ash** — a raw `Repo.query!`, a SQL cascade, a restore — the
+sync never fired, so reconcile that record with `SearchAsh.reindex_one/3`:
+
+```elixir
+SearchAsh.reindex_one(MyApp.Sales.BonDeCommande, id, tenant: "org_42")
+```
+
+It re-reads the record: present → re-indexed, gone → the resource's `on_destroy` decides
+(removed, or kept archived), just as destroying it through Ash would have. Idempotent, so
+the call site never has to work out whether to add or remove. Call it after the write
+commits and outside any transaction.
+
+**To sweep a whole source for stale index rows** whose record no longer exists, use
+`SearchAsh.prune/2` (per tenant):
+
+```elixir
+SearchAsh.prune(MyApp.Sales.BonDeCommande, tenant: "org_42")
+```
+
+It reads which rows are still live and drops every index row without one behind it
+(honouring `on_destroy`), returning the count. Pair it with `reindex/2` for a full two-way
+reconcile — backfill missing rows, then sweep orphans.
+
 The index is a normal Ash resource, so admin tools (view indexed content, force a
 reindex) are just reads/actions on it. `global_index` options: `default_language`,
 `search_text_attribute`, `action`. Archived rows are hidden by default (`include_archived?: true` to include them).
@@ -279,9 +304,18 @@ Know these before adopting — they're deliberate trade-offs, not surprises:
 - **One language per query.** Each row is pre-stemmed in its own language and stored in a
   `'simple'` tsvector, so a search probes one language at a time (the `language` argument).
   Cross-language "OR" search is not built in.
+- **Indexing rides on Ash actions.** The sync only fires when Ash builds a changeset, so a
+  write that bypasses it — a raw `Repo.query!`, a SQL cascade — leaves the index stale with
+  nothing to signal it. `reindex_one/3` is the targeted repair, but you have to call it:
+  nothing detects the bypass for you.
 - **`reindex/2` streams every row through the write action** (one upsert per record). It's
   built for backfills and small-to-medium tables; it is not a bulk-optimized reindex for
-  very large datasets.
+  very large datasets. It only upserts, so it cannot remove the index row of a source that
+  is gone — that is `reindex_one/3` (one record) or `prune/2` (a whole source) 's job.
+- **Composite string primary keys can collide.** A row's `source_id` joins its primary key
+  parts with `":"`. Single-column keys (e.g. `uuid_primary_key`) and integer parts are
+  exact, but two or more string columns whose values contain `":"` can render the same
+  `source_id` and share one index row. Fine for the common single-uuid-key case.
 - **Index creation is not `CONCURRENTLY`.** The generated GIN index is emitted as a plain
   `CREATE INDEX` migration; on a large existing table, plan the migration accordingly.
 - **Stemming is pure Elixir, at ~11µs/word.** Invisible on the query path, but a write

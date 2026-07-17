@@ -37,7 +37,8 @@ defmodule SearchAsh.GlobalIndex do
   It hides `archived` rows by default; pass `include_archived?: true` to get both.
 
   Source resources feed it with the `SearchAsh.Source` extension. Existing data is
-  backfilled with `SearchAsh.reindex/2`.
+  backfilled with `SearchAsh.reindex/2`, and a single row is reconciled after a write that
+  bypassed Ash with `SearchAsh.reindex_one/3`.
 
   ## Authorization
 

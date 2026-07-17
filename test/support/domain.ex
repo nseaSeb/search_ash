@@ -40,5 +40,19 @@ defmodule SearchAsh.Test.Domain do
       define(:update_invoice, action: :update)
       define(:destroy_invoice, action: :destroy)
     end
+
+    resource SearchAsh.Test.LineItem do
+      define(:create_line_item, action: :create)
+      define(:update_line_item, action: :update)
+    end
+
+    resource SearchAsh.Test.TrashableNote do
+      define(:create_trashable_note, action: :create)
+    end
+
+    resource SearchAsh.Test.Ticket do
+      define(:create_ticket, action: :create)
+      define(:update_ticket, action: :update)
+    end
   end
 end

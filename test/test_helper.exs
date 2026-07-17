@@ -130,4 +130,45 @@ CREATE TABLE test_invoices (
 )
 """)
 
+# Composite primary key + a filtering read policy: the two properties `reindex_one/3`'s
+# riskiest paths need and no other test resource has (see SearchAsh.Test.LineItem).
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_line_items", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_line_items (
+  order_id text NOT NULL,
+  line_no integer NOT NULL,
+  org_id text NOT NULL,
+  description text,
+  hidden boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (order_id, line_no)
+)
+""")
+
+# `label_field` outside `fields` (see SearchAsh.Test.Ticket): the subject is displayed, the
+# body is searched.
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_tickets", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_tickets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  subject text,
+  body text
+)
+""")
+
+# Soft delete via `base_filter`: the row stays, `deleted_at` hides it (see
+# SearchAsh.Test.TrashableNote).
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_trashable_notes", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_trashable_notes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  title text,
+  deleted_at timestamptz
+)
+""")
+
 ExUnit.start()

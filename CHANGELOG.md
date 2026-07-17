@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+- **`SearchAsh.reindex_one/3` — repair one index row after a write that bypassed Ash.**
+  Indexing rides on Ash actions: the sync and remove changes only fire when Ash builds a
+  changeset. A raw `Repo.query!` — a denormalized column cascaded across rows, a restore
+  from a trash table, a delete cascaded to children — never reaches them, and the index
+  goes stale with nothing to signal it. `reindex/2` could not repair that: it reads the
+  whole resource, and it only ever *upserts*, so it cannot touch the index row of an
+  object that has gone away.
+
+  `reindex_one/3` re-reads the record and reconciles, so the caller never has to know
+  whether the row should be added or removed:
+
+  ```elixir
+  # after any raw-SQL write touching an indexed object
+  SearchAsh.reindex_one(MyApp.Sales.BonDeCommande, id, tenant: "org_42")
+  ```
+
+  Present → the document is rebuilt and upserted (`:upserted`). Gone → the resource's
+  **`on_destroy`** decides, exactly as destroying it through Ash would have: `:remove`
+  deletes the index row (`:removed`), `:archive` keeps it flagged archived (`:archived`).
+  Gone and never indexed → `:noop`. It is idempotent, and composite primary keys take a
+  map or keyword list, as `Ash.get/3` does.
+
+  Call it **after** the bypassing write has committed and **outside** any surrounding
+  transaction — it re-reads the source, and it dispatches the index's notifications
+  itself.
+
+  Unlike `reindex/2`, it rejects `:actor` and `authorize?: true`: its source read always
+  runs with `authorize?: false`. This one is load-bearing rather than cosmetic. The
+  function decides what to do from whether the record is *there*, and a row hidden by a
+  policy reads as `nil` exactly like a deleted one — so an authorized read would have it
+  delete the index row of a live record. `authorize?: false` disables the policy filter
+  and nothing else: `base_filter` and the tenant still apply, so an AshArchival-style soft
+  delete is still correctly seen as gone. `reindex/2` can forward `:authorize?` safely
+  precisely because it only upserts — an authorized read that hides rows just backfills
+  fewer of them.
+
+- **`SearchAsh.prune/2` — sweep a whole source for index rows whose record is gone.** Where
+  `reindex_one/3` reconciles one record you know changed, `prune/2` reconciles a source in
+  the deletion direction: recovering from a bulk `DELETE`, a botched migration, or any run of
+  bypassing writes that was never followed by `reindex_one/3`.
+
+  ```elixir
+  SearchAsh.prune(MyApp.Sales.BonDeCommande, tenant: "org_42")
+  ```
+
+  It streams the source once into the set of live `source_id`s, then applies each resource's
+  `on_destroy` (`:remove` deletes, `:archive` archives) to every index row of that
+  `source_type` with no live record behind it, returning the count. It only ever removes;
+  pair it with `reindex/2` for a full two-way reconcile. Like `reindex_one/3` it rejects
+  `:actor`/`authorize?: true` — and here the reason is sharper: it decides a row is an orphan
+  by finding no live source, so a live set read *with a policy applied* would classify every
+  hidden row as an orphan and delete it. The live set is always read `authorize?: false`.
+  For the same reason it reads existence through the source's primary read action, which must
+  return every indexable row (a `filter` on it — not `base_filter` — would make live rows look
+  like orphans); and it refuses to run when a multitenant source feeds a non-multitenant index,
+  which could not be tenant-scoped and would delete other tenants' rows.
+
+### Fixed
+
+- **A change to `label_field` alone did not refresh the index label.** The sync's recompute
+  short-circuit watched the searchable `fields`, the language and `archived` — but not
+  `label_field`. For a resource whose label is not itself a searchable field (search the
+  body, display the subject), renaming the label changed nothing watched, so no upsert ran
+  and the index kept the old label. The label attribute is now watched too. (Latent for any
+  resource that includes its `label_field` in `fields`, which is why it went unnoticed.)
+
+### Changed
+
+- **Index writes moved into one internal module** (`SearchAsh.Source.Index`), shared by the
+  sync change, the remove change, `reindex/2`, `reindex_one/3` and `prune/2`. What
+  `on_destroy` means now has a single implementation, so the manual paths cannot drift from
+  the action path — `reindex_one/3` and `prune/2` exist precisely to agree with a destroy
+  they never saw. Two consequences for `reindex/2`, both benign outside a transaction: it now
+  dispatches its notifications via `Ash.Notifier.notify/1` (equivalent, since it never runs in
+  one), and it now skips a partially-loaded record — a narrowed `select` — rather than
+  indexing it from incomplete data, matching what the sync change already did.
+
+- **Documented a `source_id` limitation for composite string primary keys.** A row's
+  `source_id` joins its primary key parts with `":"`; two or more string columns whose
+  values contain `":"` can render the same `source_id` and share one index row. Single-column
+  keys (the usual `uuid_primary_key`) and integer parts cannot collide. Documented rather
+  than fixed: changing the join would alter every stored `source_id` and force a full
+  reindex — a breaking change for a later major version.
+
 ## 0.2.2
 
 ### Fixed

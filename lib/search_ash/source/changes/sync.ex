@@ -16,7 +16,7 @@ defmodule SearchAsh.Source.Changes.Sync do
   # row, since `changing_attribute?` isn't meaningful for an atomic changeset.
   use Ash.Resource.Change
 
-  alias SearchAsh.Source.{Document, Info}
+  alias SearchAsh.Source.{Index, Info}
 
   @impl true
   def change(changeset, _opts, _context) do
@@ -49,25 +49,13 @@ defmodule SearchAsh.Source.Changes.Sync do
     end
   end
 
-  # Upserts the index row and returns the notifications it generated (so the calling hook
-  # can hand them back to Ash for dispatch — otherwise they'd be "missed" inside the
-  # source action's transaction). Returns [] for a partially-loaded record (narrowed
-  # `select`), which is left as-is rather than indexed from incomplete data.
-  # `authorize?: false`: mirroring is machinery, not a user action. The source write it
-  # rides on was already authorized by the source's own policies, and the index's policies
-  # express what a user may *find* — a different question. Re-authorizing the mirror
-  # against them would make `SearchAsh.Source` break the moment an index carries policies.
+  # Upserts the index row and returns the notifications it generated, so the calling hook can
+  # hand them back to Ash for dispatch — otherwise they'd be "missed" inside the source
+  # action's transaction. The write itself lives in `Source.Index`, shared with the destroy
+  # path and with `SearchAsh.reindex/2`+`reindex_one/3`.
   defp upsert(resource, record, tenant) do
-    if Document.loaded?(resource, record) do
-      {_indexed, notifications} =
-        Info.index(resource)
-        |> Ash.Changeset.for_create(:upsert, Document.to_attrs(resource, record), tenant: tenant)
-        |> Ash.create!(authorize?: false, return_notifications?: true)
-
-      notifications
-    else
-      []
-    end
+    {_result, notifications} = Index.upsert(resource, record, tenant)
+    notifications
   end
 
   defp recompute?(changeset) do
@@ -93,7 +81,11 @@ defmodule SearchAsh.Source.Changes.Sync do
   defp guarded_attributes(resource) do
     # With a static language there is no language attribute to watch for changes on.
     language = if Info.language(resource), do: [], else: [Info.language_attribute(resource)]
-    base = Info.fields(resource) ++ language
+    # The label is stored in the index too, so a change to it must re-sync even when it is not
+    # one of the searchable `fields` (search the body, display the subject). Nil when no
+    # `label_field` is configured.
+    label = List.wrap(Info.label_field(resource))
+    base = Info.fields(resource) ++ language ++ label
 
     case Info.archived(resource) do
       attribute when is_atom(attribute) and not is_nil(attribute) -> [attribute | base]

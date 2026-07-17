@@ -55,6 +55,25 @@ defmodule SearchAsh.Source do
   default) or keeps it archived (`:archive`, for AshArchival-style soft deletes).
 
   Backfill existing rows with `SearchAsh.reindex(MyApp.Sales.BonDeCommande)`.
+
+  ## Writes that bypass Ash
+
+  The sync above is a `Ash.Resource.Change`, so it only runs when Ash builds a changeset. A
+  write that goes straight to the database — a raw `Repo.query!`, a SQL cascade updating a
+  denormalized column across rows, a restore — never reaches it, and the index silently keeps
+  the old document. Reconcile the affected records afterwards with `SearchAsh.reindex_one/3`,
+  which re-reads each one and works out whether to re-index or remove it — or sweep a whole
+  source for index rows whose record is gone with `SearchAsh.prune/2`.
+
+  ## Composite primary keys
+
+  A row is identified in the index by its `source_id`, built by joining the primary key parts
+  with `":"`. With a single-column key (the usual case — a `uuid_primary_key`) this is exact.
+  With a **composite key of two or more string columns**, the join is ambiguous: `{"a:b", "c"}`
+  and `{"a", "b:c"}` both render `"a:b:c"` and would share one index row, one masking the
+  other. Integer parts, or a single-column key, cannot collide. If you index a resource whose
+  primary key is several string columns and those values may themselves contain `":"`, that is
+  a limitation to be aware of — it does not affect single-column or integer keys.
   """
 
   @searchable %Spark.Dsl.Section{
