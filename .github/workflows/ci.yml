@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
+    # Not tags: a release tag points at a commit already on main, so it was tested by the
+    # branch push above — triggering again on the tag would just run the same commit twice.
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
 
