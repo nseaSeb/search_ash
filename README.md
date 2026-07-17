@@ -209,25 +209,34 @@ Postgres-backed test suite.
 
 Know these before adopting — they're deliberate trade-offs, not surprises:
 
-- **The index enforces tenant isolation, and nothing finer. It does not know your source
-  resource's policies.** An index row can only ever hold `source_type`, `source_id`,
-  `language`, `search_text`, `archived`, `label` and your tenant attribute — there is no
-  way to carry an `owner_id`, a team, or a visibility flag into it. `:global_search`
-  filters on the tenant, `archived` and the tsvector match; it never consults the source's
-  policies or the actor.
+- **The index does not inherit your source resources' policies — but you can give it its
+  own.** `:global_search` is a plain Ash read action, so policies on your index resource
+  compose with it normally. What you can authorize on is limited to the columns an index
+  row has: `source_type`, `archived`, `label`, `language` and your tenant attribute.
 
-  So: **fine when the tenant is your security boundary** (every user of a tenant may see
-  everything in it) — that's the common SaaS shape, and it's what the demo does. **Not
-  fine when visibility varies _within_ a tenant** (teams, roles, private records): a user
-  would see the `label` of rows they cannot read.
+  **Role → entity type works today.** If a role gates *which kinds of thing* a user may
+  see, put the policy on your index resource:
 
-  Post-filtering the results against the sources breaks ranking and pagination (you'd
-  filter *after* ranking, so page 1 can come back empty) — the standard problem with a
-  denormalized index, not something this library papers over. If you need intra-tenant
-  authorization today, `search do … end` on each resource is the honest option: it queries
-  the source table itself, so your policies apply — you just lose the cross-entity index.
-  A `searchable do extra_attrs …` hook to carry your own columns into the index is on the
-  roadmap.
+  ```elixir
+  # in MyApp.Search.Document
+  policies do
+    policy action_type(:read) do
+      authorize_if expr(source_type in ^actor(:visible_types))
+    end
+  end
+  ```
+
+  (`source_type` is stored as a **string**, so the actor's list must hold strings. Ash
+  policies need a SAT solver — add `:picosat_elixir` or `:simple_sat`.)
+
+  **Row-level ownership does not.** There is no way to carry an `owner_id`, a team, or a
+  per-record visibility flag into an index row — `SearchAsh.Source` writes a fixed set of
+  columns. If a user may only see *some* invoices rather than all or none, this index
+  cannot express it: post-filtering the results breaks ranking and pagination (you'd
+  filter *after* ranking, so a page can come back empty), which is the standard
+  denormalized-index problem. Use `search do … end` on each resource there — it queries
+  the source table, so your policies apply, at the cost of cross-entity search. The
+  `extra_attrs` hook on the roadmap is what would close this.
 
 - **Indexing is synchronous, in the same transaction as the write.** The sync runs in an
   `after_action` hook using the source's repo, so the index upsert commits (or rolls back)

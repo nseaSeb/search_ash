@@ -39,20 +39,31 @@ defmodule SearchAsh.GlobalIndex do
   Source resources feed it with the `SearchAsh.Source` extension. Existing data is
   backfilled with `SearchAsh.reindex/2`.
 
-  ## Authorization: the tenant is the boundary, and nothing finer
+  ## Authorization
 
-  An index row holds only the columns listed above plus your tenant attribute — there is
-  no way to carry an `owner_id`, a team, or a visibility flag into it. `:global_search`
-  filters on the tenant, `archived` and the tsvector match; it **does not consult the
-  source resource's policies or the actor**.
+  This index does **not** inherit the policies of the resources feeding it. It does honour
+  its own: `:global_search` is a plain Ash read action, so policies you put on this
+  resource compose with it. What they can authorize on is whatever an index row holds —
+  `source_type`, `archived`, `label`, `language`, and your tenant attribute.
 
-  That fits a SaaS where every user of a tenant may see everything in it. It does **not**
-  fit per-user or per-team visibility inside a tenant: a user would see the `label` of
-  rows they cannot read. Post-filtering against the sources breaks ranking and pagination
-  (you would filter *after* ranking, so a page can come back empty) — the standard
-  denormalized-index problem. Until `extra_attrs` lands (roadmap), per-resource
-  `SearchAsh` (`search do … end`) is the honest option there: it queries the source table
-  itself, so your policies apply.
+  So a role that gates **which kinds of thing** a user may see works today:
+
+      policies do
+        policy action_type(:read) do
+          authorize_if expr(source_type in ^actor(:visible_types))
+        end
+      end
+
+  `source_type` is stored as a string, so the actor's list must hold strings. Ash policies
+  need a SAT solver (`:picosat_elixir` or `:simple_sat`).
+
+  **Row-level ownership does not.** No `owner_id`, team, or per-record visibility flag can
+  reach an index row — `SearchAsh.Source` writes a fixed set of columns. Post-filtering the
+  results breaks ranking and pagination (you would filter *after* ranking, so a page can
+  come back empty), which is the standard denormalized-index problem. Use per-resource
+  `SearchAsh` (`search do … end`) there: it queries the source table, so your policies
+  apply, at the cost of cross-entity search. The `extra_attrs` hook on the roadmap is what
+  would close this.
   """
 
   @global_index %Spark.Dsl.Section{
