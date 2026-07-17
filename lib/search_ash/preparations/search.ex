@@ -62,9 +62,9 @@ defmodule SearchAsh.Preparations.Search do
   end
 
   # Fall back to the resource's default language for anything that isn't a supported
-  # Stemmers language (nil, a non-atom, or an unknown atom) — never crash the stemmer.
+  # language (nil, a non-atom, or an unknown atom) — never crash the stemmer.
   defp normalize_language(lang, resource) do
-    if is_atom(lang) and Stemmers.supported?(lang) do
+    if is_atom(lang) and SearchCore.Language.supported?(lang) do
       lang
     else
       SearchAsh.Info.default_language(resource)

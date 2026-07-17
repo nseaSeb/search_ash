@@ -9,8 +9,23 @@ defmodule SearchAsh.Source.Info do
 
   def fields(resource), do: Extension.get_opt(resource, [:searchable], :fields, [])
 
+  @doc """
+  The static language fixed for every row of this resource, or `nil` when the language is
+  read per-row from `language_attribute/1`.
+  """
+  def language(resource), do: Extension.get_opt(resource, [:searchable], :language, nil)
+
+  @doc """
+  Attribute holding each row's language, defaulting to `:language`.
+
+  Only meaningful when `language/1` is `nil`; the two are mutually exclusive.
+  """
   def language_attribute(resource),
     do: Extension.get_opt(resource, [:searchable], :language_attribute, :language)
+
+  @doc "Whether `language_attribute` was set explicitly, as opposed to falling back to `:language`."
+  def language_attribute_configured?(resource),
+    do: Extension.get_opt(resource, [:searchable], :language_attribute, nil) != nil
 
   def label_field(resource), do: Extension.get_opt(resource, [:searchable], :label_field, nil)
 

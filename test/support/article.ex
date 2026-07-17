@@ -43,7 +43,7 @@ defmodule SearchAsh.Test.Article do
     attribute(:language, :atom,
       allow_nil?: false,
       public?: true,
-      constraints: [one_of: Stemmers.supported_languages()]
+      constraints: [one_of: SearchCore.Language.supported_languages()]
     )
   end
 end

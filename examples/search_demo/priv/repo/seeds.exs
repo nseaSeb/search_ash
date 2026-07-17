@@ -8,7 +8,7 @@ end
 
 # --- org_a (French) ---
 SearchDemo.Blog.create_post!(
-  %{title: "Les chevaux", body: "J'adore regarder les chevaux qui mangent.", language: :french},
+  %{title: "Les chevaux", body: "J'adore regarder les chevaux qui mangent.", language: :fr},
   tenant: "org_a"
 )
 
@@ -35,7 +35,7 @@ SearchDemo.Sales.create_facture!(
 
 # --- org_b (mixed) ---
 SearchDemo.Blog.create_post!(
-  %{title: "Running", body: "She was running fast and the connections worked.", language: :english},
+  %{title: "Running", body: "She was running fast and the connections worked.", language: :en},
   tenant: "org_b"
 )
 

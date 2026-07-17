@@ -22,7 +22,7 @@ defmodule SearchAsh do
     * a `:search_text` string attribute (unless you defined one), holding the
       stemmed tokens;
     * a global change that keeps `:search_text` in sync on create/update, stemming
-      each row in its own language via `SearchCore` (the `stemmers` Rust NIF);
+      each row in its own language via `SearchCore`;
     * a GIN expression index `to_tsvector('simple', search_text)` on the Postgres
       table — emitted into your migrations and tracked in the resource snapshot, so
       `mix ash_postgres.generate_migrations` round-trips it cleanly;
@@ -73,7 +73,7 @@ defmodule SearchAsh do
       ],
       default_language: [
         type: :atom,
-        default: :french,
+        default: :fr,
         doc:
           "Language used to stem the query when the `:search` action's `language` " <>
             "argument is omitted (e.g. from a generic list UI)."

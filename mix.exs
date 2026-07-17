@@ -1,7 +1,7 @@
 defmodule SearchAsh.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/nseaSeb/search_ash"
 
   def project do
@@ -14,7 +14,7 @@ defmodule SearchAsh.MixProject do
       description:
         "Ash extension for multilingual full-text search: a `search do … end` DSL that " <>
           "auto-generates the tsvector index, keeps a stemmed column in sync, and exposes " <>
-          "a tenant-aware, ranked `search` action. Built on search_core + the stemmers NIF.",
+          "a tenant-aware, ranked `search` action. Built on search_core.",
       package: package(),
       docs: docs(),
       source_url: @source_url,
@@ -35,12 +35,23 @@ defmodule SearchAsh.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:search_core, "~> 0.1"},
+      search_core_dep(),
       {:ash, "~> 3.29"},
       {:ash_postgres, "~> 2.10"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:sourceror, "~> 1.0", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  # Inside the monorepo the sibling source is what we want to build against — a change to
+  # search_core should be visible here before it is published. Set SEARCH_ASH_LOCAL_CORE=1
+  # for that; the published package always resolves through Hex.
+  defp search_core_dep do
+    if System.get_env("SEARCH_ASH_LOCAL_CORE") in ~w(1 true) do
+      {:search_core, path: "../search_core", override: true}
+    else
+      {:search_core, "~> 0.2"}
+    end
   end
 
   defp package do

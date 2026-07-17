@@ -24,7 +24,9 @@ defmodule SearchDemo.MixProject do
   defp deps do
     [
       {:search_ash, path: "../.."},
-      {:search_core, path: "../../../search_core"},
+      # `override: true` so the sibling source wins over the Hex version search_ash asks
+      # for — the demo must exercise the monorepo's working tree, not a published build.
+      {:search_core, path: "../../../search_core", override: true},
       {:ash, "~> 3.29"},
       {:ash_postgres, "~> 2.10"},
       # GreenAsh: a terminal-style admin console over the Ash resources (dev only).

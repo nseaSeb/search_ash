@@ -52,7 +52,7 @@ defmodule SearchAsh.Test.Invoice do
     attribute :language, :atom,
       allow_nil?: false,
       public?: true,
-      default: :french,
-      constraints: [one_of: Stemmers.supported_languages()]
+      default: :fr,
+      constraints: [one_of: SearchCore.Language.supported_languages()]
   end
 end

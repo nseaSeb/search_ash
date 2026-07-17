@@ -18,10 +18,10 @@ defmodule SearchAsh.GlobalIndexTest do
   end
 
   defp create(attrs, tenant), do: Domain.create_product!(attrs, tenant: tenant)
-  defp gsearch(query, tenant), do: Domain.global_search!(query, :french, tenant: tenant)
+  defp gsearch(query, tenant), do: Domain.global_search!(query, :fr, tenant: tenant)
 
   defp gsearch(query, tenant, include_archived?) do
-    Domain.global_search!(query, :french, %{include_archived?: include_archived?}, tenant: tenant)
+    Domain.global_search!(query, :fr, %{include_archived?: include_archived?}, tenant: tenant)
   end
 
   test "creating a source resource indexes it into the global index" do
@@ -66,7 +66,7 @@ defmodule SearchAsh.GlobalIndexTest do
     Ecto.Adapters.SQL.query!(
       Repo,
       "INSERT INTO test_products (org_id, name, sku, discontinued, language) " <>
-        "VALUES ('a', 'Marteau', 'MRT', false, 'french')",
+        "VALUES ('a', 'Marteau', 'MRT', false, 'fr')",
       []
     )
 

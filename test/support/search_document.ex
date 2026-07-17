@@ -17,7 +17,7 @@ defmodule SearchAsh.Test.SearchDocument do
   end
 
   global_index do
-    default_language :french
+    default_language :fr
   end
 
   attributes do

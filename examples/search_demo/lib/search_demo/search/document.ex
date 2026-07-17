@@ -32,7 +32,7 @@ defmodule SearchDemo.Search.Document do
   end
 
   global_index do
-    default_language :french
+    default_language :fr
   end
 
   attributes do

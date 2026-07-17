@@ -65,8 +65,8 @@ show = fn label, results ->
   IO.puts("")
 end
 
-a = Search.global_search!("chevaux", :french, tenant: "org_a")
-b = Search.global_search!("chevaux", :french, tenant: "org_b")
+a = Search.global_search!("chevaux", :fr, tenant: "org_a")
+b = Search.global_search!("chevaux", :fr, tenant: "org_b")
 
 show.(~s|global_search "chevaux" @ org_a:|, a)
 show.(~s|global_search "chevaux" @ org_b:|, b)
@@ -92,7 +92,7 @@ check.(
 
 # --- deletion: destroying a source object removes it from the index ---
 Sales.destroy_produit!(produit_a, tenant: "org_a")
-a_after = Search.global_search!("chevaux", :french, tenant: "org_a")
+a_after = Search.global_search!("chevaux", :fr, tenant: "org_a")
 
 IO.puts("")
 show.(~s|after destroying produit "Selle pour cheval" — org_a:|, a_after)

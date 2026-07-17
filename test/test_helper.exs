@@ -65,6 +65,18 @@ CREATE TABLE test_products (
 )
 """)
 
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_static_pages", [])
+
+# Deliberately has no `language` column: this resource fixes its language statically.
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_static_pages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  title text,
+  body text
+)
+""")
+
 Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_invoices", [])
 
 Ecto.Adapters.SQL.query!(Repo, """

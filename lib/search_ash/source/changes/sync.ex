@@ -87,7 +87,9 @@ defmodule SearchAsh.Source.Changes.Sync do
   end
 
   defp guarded_attributes(resource) do
-    base = Info.fields(resource) ++ [Info.language_attribute(resource)]
+    # With a static language there is no language attribute to watch for changes on.
+    language = if Info.language(resource), do: [], else: [Info.language_attribute(resource)]
+    base = Info.fields(resource) ++ language
 
     case Info.archived(resource) do
       attribute when is_atom(attribute) and not is_nil(attribute) -> [attribute | base]

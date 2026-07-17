@@ -19,6 +19,11 @@ defmodule SearchAsh.Test.Domain do
       define(:destroy_product, action: :destroy)
     end
 
+    resource SearchAsh.Test.StaticPage do
+      define(:create_static_page, action: :create)
+      define(:update_static_page, action: :update)
+    end
+
     resource SearchAsh.Test.Invoice do
       define(:create_invoice, action: :create)
       define(:update_invoice, action: :update)

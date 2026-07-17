@@ -4,7 +4,7 @@ defmodule SearchAsh.GlobalIndex.Info do
 
   @doc "Language used to stem the query when the language argument is omitted."
   def default_language(resource),
-    do: Extension.get_opt(resource, [:global_index], :default_language, :french)
+    do: Extension.get_opt(resource, [:global_index], :default_language, :fr)
 
   @doc "Attribute holding the pre-stemmed tokens."
   def search_text_attribute(resource),

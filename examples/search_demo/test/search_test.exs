@@ -28,52 +28,52 @@ defmodule SearchDemo.SearchTest do
   describe "search_ash extension — :search on Post" do
     test "finds a stemmed French match" do
       SearchDemo.Blog.create_post!(
-        %{title: "Les chevaux", body: "ils mangent", language: :french},
+        %{title: "Les chevaux", body: "ils mangent", language: :fr},
         tenant: "org_a"
       )
 
       assert [%{title: "Les chevaux"}] =
-               SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_a")
+               SearchDemo.Blog.search_posts!("chevaux", :fr, tenant: "org_a")
     end
 
     test "tenant isolation — a query only returns the caller's rows" do
-      SearchDemo.Blog.create_post!(%{title: "A", body: "cheval", language: :french},
+      SearchDemo.Blog.create_post!(%{title: "A", body: "cheval", language: :fr},
         tenant: "org_a"
       )
 
-      SearchDemo.Blog.create_post!(%{title: "B", body: "cheval", language: :french},
+      SearchDemo.Blog.create_post!(%{title: "B", body: "cheval", language: :fr},
         tenant: "org_b"
       )
 
-      assert [%{title: "A"}] = SearchDemo.Blog.search_posts!("cheval", :french, tenant: "org_a")
-      assert [%{title: "B"}] = SearchDemo.Blog.search_posts!("cheval", :french, tenant: "org_b")
+      assert [%{title: "A"}] = SearchDemo.Blog.search_posts!("cheval", :fr, tenant: "org_a")
+      assert [%{title: "B"}] = SearchDemo.Blog.search_posts!("cheval", :fr, tenant: "org_b")
     end
 
     test "blank query lists all (no crash)" do
-      SearchDemo.Blog.create_post!(%{title: "X", body: "y", language: :french}, tenant: "org_a")
-      assert length(SearchDemo.Blog.search_posts!("", :french, tenant: "org_a")) == 1
+      SearchDemo.Blog.create_post!(%{title: "X", body: "y", language: :fr}, tenant: "org_a")
+      assert length(SearchDemo.Blog.search_posts!("", :fr, tenant: "org_a")) == 1
     end
 
     test "too-short query (< min_length) lists all instead of crashing" do
-      SearchDemo.Blog.create_post!(%{title: "X", body: "y", language: :french}, tenant: "org_a")
-      assert length(SearchDemo.Blog.search_posts!("b", :french, tenant: "org_a")) == 1
+      SearchDemo.Blog.create_post!(%{title: "X", body: "y", language: :fr}, tenant: "org_a")
+      assert length(SearchDemo.Blog.search_posts!("b", :fr, tenant: "org_a")) == 1
     end
 
     test "prefix — a partial word matches" do
-      SearchDemo.Blog.create_post!(%{title: "Boulangerie", body: "pain", language: :french},
+      SearchDemo.Blog.create_post!(%{title: "Boulangerie", body: "pain", language: :fr},
         tenant: "org_a"
       )
 
       assert [%{title: "Boulangerie"}] =
-               SearchDemo.Blog.search_posts!("boulan", :french, tenant: "org_a")
+               SearchDemo.Blog.search_posts!("boulan", :fr, tenant: "org_a")
     end
 
     test "a query in the wrong language does not match" do
-      SearchDemo.Blog.create_post!(%{title: "Chevaux", body: "chevaux", language: :french},
+      SearchDemo.Blog.create_post!(%{title: "Chevaux", body: "chevaux", language: :fr},
         tenant: "org_a"
       )
 
-      assert [] = SearchDemo.Blog.search_posts!("running", :english, tenant: "org_a")
+      assert [] = SearchDemo.Blog.search_posts!("running", :en, tenant: "org_a")
     end
   end
 
@@ -160,7 +160,7 @@ defmodule SearchDemo.SearchTest do
   end
 
   defp search(query, tenant),
-    do: SearchDemo.Search.global_search!(query, :french, tenant: tenant)
+    do: SearchDemo.Search.global_search!(query, :fr, tenant: tenant)
 
   defp labels(results), do: results |> Enum.map(& &1.label) |> Enum.sort()
 end

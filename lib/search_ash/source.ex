@@ -21,8 +21,29 @@ defmodule SearchAsh.Source do
         # ... attributes + create/update/destroy actions ...
       end
 
+  ## Choosing the language
+
+  Each indexed row is stemmed in one language, resolved one of two ways — pick whichever
+  fits the resource:
+
+    * `language_attribute :language` (the default) reads the language **per row** from
+      that attribute, so one resource can hold rows in many languages.
+    * `language :fr` fixes **one** language for every row of the resource. Use it for
+      a mono-language resource, which then needs no language attribute at all.
+
+  The two are mutually exclusive, and setting neither is only valid when the resource
+  actually has a `:language` attribute — a compile-time verifier enforces both rules.
+
+      searchable do
+        index MyApp.Search.Document
+        source_type :page_statique
+        fields [:titre, :corps]
+        language :fr                 # no :language attribute on this resource
+      end
+
   The extension sets `require_atomic? false` on the update/destroy actions it augments
-  (the sync stems through a NIF and can't run in an atomic SQL statement), so you don't
+  (stemming happens in Elixir, so the sync can't be expressed as an atomic SQL statement),
+  so you don't
   set it yourself. Because the sync writes only to the *separate* index table (never to a
   source attribute), it is atomic-compatible: `Ash.bulk_create`/`bulk_update`/`bulk_destroy`
   keep the index in sync with no `strategy:` option required.
@@ -55,10 +76,25 @@ defmodule SearchAsh.Source do
         required: true,
         doc: "Attributes whose text is concatenated, stemmed and indexed."
       ],
+      language: [
+        type: :atom,
+        required: false,
+        doc:
+          "A single language for **every** row of this resource, e.g. `language :fr`. " <>
+            "Use this for a mono-language resource that has no language attribute. " <>
+            "An ISO 639-1 code — see `SearchCore.Language`. Mutually exclusive with " <>
+            "`language_attribute`."
+      ],
+      # No `default:` here on purpose: the default is applied by
+      # `SearchAsh.Source.Info.language_attribute/1` when read, which leaves the DSL state
+      # able to tell "explicitly set to :language" apart from "not set at all" — that is
+      # what makes the `language` / `language_attribute` exclusivity check possible.
       language_attribute: [
         type: :atom,
-        default: :language,
-        doc: "Attribute holding each row's language."
+        required: false,
+        doc:
+          "Attribute holding each row's language (default `:language`). Mutually " <>
+            "exclusive with `language`."
       ],
       label_field: [
         type: :atom,
@@ -89,5 +125,6 @@ defmodule SearchAsh.Source do
 
   use Spark.Dsl.Extension,
     sections: [@searchable],
-    transformers: [SearchAsh.Source.Transformers.AddSync]
+    transformers: [SearchAsh.Source.Transformers.AddSync],
+    verifiers: [SearchAsh.Source.Verifiers.VerifyLanguage]
 end

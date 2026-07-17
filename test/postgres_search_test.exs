@@ -15,25 +15,25 @@ defmodule SearchAsh.PostgresSearchTest do
 
   defp create(attrs, tenant), do: Domain.create_article!(attrs, tenant: tenant)
 
-  defp search(query, tenant, lang \\ :french),
+  defp search(query, tenant, lang \\ :fr),
     do: Domain.search_articles!(query, lang, tenant: tenant)
 
   test "create indexes the row; a stemmed query finds it" do
-    create(%{title: "Les chevaux", body: "ils mangent", language: :french}, "a")
+    create(%{title: "Les chevaux", body: "ils mangent", language: :fr}, "a")
     assert [%{title: "Les chevaux"}] = search("chevaux", "a")
   end
 
   test "tenant isolation — a query only returns the caller's rows" do
-    create(%{title: "A", body: "cheval", language: :french}, "a")
-    create(%{title: "B", body: "cheval", language: :french}, "b")
+    create(%{title: "A", body: "cheval", language: :fr}, "a")
+    create(%{title: "B", body: "cheval", language: :fr}, "b")
 
     assert [%{title: "A"}] = search("cheval", "a")
     assert [%{title: "B"}] = search("cheval", "b")
   end
 
   test "results are ranked by relevance and expose :search_rank" do
-    create(%{title: "cheval cheval cheval", body: "cheval", language: :french}, "a")
-    create(%{title: "cheval", body: "autre", language: :french}, "a")
+    create(%{title: "cheval cheval cheval", body: "cheval", language: :fr}, "a")
+    create(%{title: "cheval", body: "autre", language: :fr}, "a")
 
     results = search("cheval", "a")
     assert hd(results).title == "cheval cheval cheval"
@@ -42,25 +42,25 @@ defmodule SearchAsh.PostgresSearchTest do
   end
 
   test "prefix — a partial word matches" do
-    create(%{title: "Boulangerie", body: "pain", language: :french}, "a")
+    create(%{title: "Boulangerie", body: "pain", language: :fr}, "a")
     assert [%{title: "Boulangerie"}] = search("boulan", "a")
   end
 
   test "blank and too-short queries list all (no crash)" do
-    create(%{title: "X", body: "y", language: :french}, "a")
-    create(%{title: "Z", body: "w", language: :french}, "a")
+    create(%{title: "X", body: "y", language: :fr}, "a")
+    create(%{title: "Z", body: "w", language: :fr}, "a")
 
     assert length(search("", "a")) == 2
     assert length(search("b", "a")) == 2
   end
 
   test "a query in the wrong language does not match" do
-    create(%{title: "Chevaux", body: "chevaux", language: :french}, "a")
-    assert [] = search("running", "a", :english)
+    create(%{title: "Chevaux", body: "chevaux", language: :fr}, "a")
+    assert [] = search("running", "a", :en)
   end
 
   test "update re-syncs the index" do
-    article = create(%{title: "Boulangerie", body: "pain", language: :french}, "a")
+    article = create(%{title: "Boulangerie", body: "pain", language: :fr}, "a")
     assert [_] = search("boulan", "a")
 
     Domain.update_article!(article, %{title: "Cordonnerie"}, tenant: "a")
@@ -70,7 +70,7 @@ defmodule SearchAsh.PostgresSearchTest do
   end
 
   test "update with a narrowed select does not wipe unloaded fields from the index" do
-    article = create(%{title: "Chevaux", body: "galop", language: :french}, "a")
+    article = create(%{title: "Chevaux", body: "galop", language: :fr}, "a")
     assert [_] = search("galop", "a")
 
     # Reload the record WITHOUT body, then update the title. The sync must not recompute
@@ -87,19 +87,19 @@ defmodule SearchAsh.PostgresSearchTest do
   end
 
   test "an unsupported language falls back to the default instead of crashing" do
-    create(%{title: "chevaux", body: "x", language: :french}, "a")
-    # :klingon is not a Stemmers language → normalized to the default (:french).
+    create(%{title: "chevaux", body: "x", language: :fr}, "a")
+    # :klingon is not a Stemmers language → normalized to the default (:fr).
     assert [%{title: "chevaux"}] = search("chevaux", "a", :klingon)
   end
 
   test "a blank query is unranked and does not load :search_rank" do
-    create(%{title: "x", body: "y", language: :french}, "a")
+    create(%{title: "x", body: "y", language: :fr}, "a")
     [row] = search("", "a")
     assert match?(%Ash.NotLoaded{}, row.search_rank)
   end
 
   test "a real query loads :search_rank as a float" do
-    create(%{title: "cheval", body: "cheval", language: :french}, "a")
+    create(%{title: "cheval", body: "cheval", language: :fr}, "a")
     [row] = search("cheval", "a")
     assert is_float(row.search_rank)
   end

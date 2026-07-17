@@ -61,7 +61,7 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
   end
 
   defp normalize_language(lang, resource) do
-    if is_atom(lang) and Stemmers.supported?(lang),
+    if is_atom(lang) and SearchCore.Language.supported?(lang),
       do: lang,
       else: Info.default_language(resource)
   end

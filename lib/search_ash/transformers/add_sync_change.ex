@@ -23,7 +23,7 @@ defmodule SearchAsh.Transformers.AddSyncChange do
     {:ok, dsl}
   end
 
-  # The sync change stems via a NIF and can't run in an atomic SQL update, so force
+  # The sync change stems in Elixir and can't run in an atomic SQL update, so force
   # require_atomic? false on every update action rather than making adopters remember it.
   defp relax_atomic_requirement(dsl) do
     dsl

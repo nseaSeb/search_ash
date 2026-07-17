@@ -23,7 +23,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
     |> add_attribute(:language, :atom,
       allow_nil?: false,
       public?: true,
-      constraints: [one_of: Stemmers.supported_languages()]
+      constraints: [one_of: SearchCore.Language.supported_languages()]
     )
     |> add_attribute(search_text, :string, allow_nil?: true, public?: true)
     |> add_attribute(:archived, :boolean, allow_nil?: false, public?: true, default: false)

@@ -35,7 +35,7 @@ defmodule SearchAshTest do
 
       attribute(:language, :atom,
         public?: true,
-        constraints: [one_of: [:french, :english]]
+        constraints: [one_of: [:fr, :en]]
       )
     end
   end
@@ -79,7 +79,7 @@ defmodule SearchAshTest do
       |> Ash.Changeset.for_create(:create, %{
         title: "Les chevaux",
         body: "qui mangent",
-        language: :french
+        language: :fr
       })
       |> Ash.create()
 
@@ -112,7 +112,7 @@ defmodule SearchAshTest do
         attributes do
           uuid_primary_key(:id)
           attribute(:title, :string, public?: true)
-          attribute(:language, :atom, public?: true, constraints: [one_of: [:french]])
+          attribute(:language, :atom, public?: true, constraints: [one_of: [:fr]])
         end
       end
     end

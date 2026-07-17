@@ -21,7 +21,7 @@ defmodule SearchAsh.GlobalIndex do
         end
 
         global_index do
-          default_language :french
+          default_language :fr
         end
 
         attributes do
@@ -38,6 +38,21 @@ defmodule SearchAsh.GlobalIndex do
 
   Source resources feed it with the `SearchAsh.Source` extension. Existing data is
   backfilled with `SearchAsh.reindex/2`.
+
+  ## Authorization: the tenant is the boundary, and nothing finer
+
+  An index row holds only the columns listed above plus your tenant attribute — there is
+  no way to carry an `owner_id`, a team, or a visibility flag into it. `:global_search`
+  filters on the tenant, `archived` and the tsvector match; it **does not consult the
+  source resource's policies or the actor**.
+
+  That fits a SaaS where every user of a tenant may see everything in it. It does **not**
+  fit per-user or per-team visibility inside a tenant: a user would see the `label` of
+  rows they cannot read. Post-filtering against the sources breaks ranking and pagination
+  (you would filter *after* ranking, so a page can come back empty) — the standard
+  denormalized-index problem. Until `extra_attrs` lands (roadmap), per-resource
+  `SearchAsh` (`search do … end`) is the honest option there: it queries the source table
+  itself, so your policies apply.
   """
 
   @global_index %Spark.Dsl.Section{
@@ -46,7 +61,7 @@ defmodule SearchAsh.GlobalIndex do
     schema: [
       default_language: [
         type: :atom,
-        default: :french,
+        default: :fr,
         doc: "Language used to stem the query when `:global_search`'s language arg is omitted."
       ],
       search_text_attribute: [

@@ -14,25 +14,25 @@ Repo.delete_all(Post)
 posts = [
   {"org_a",
    %{
-     language: :french,
+     language: :fr,
      title: "Les chevaux",
      body: "J'adore regarder les chevaux qui mangent dans les prés."
    }},
   {"org_a",
    %{
-     language: :french,
+     language: :fr,
      title: "Cuisine",
      body: "Une recette de poissons grillés avec des herbes."
    }},
   {"org_b",
    %{
-     language: :french,
+     language: :fr,
      title: "Chevaux de course",
      body: "Les chevaux de course les plus rapides du monde."
    }},
   {"org_b",
    %{
-     language: :english,
+     language: :en,
      title: "Running",
      body: "She was running fast and the connections finally worked."
    }}
@@ -52,32 +52,32 @@ end
 # Per-row language (both tenants) + stemming symmetry ("chevaux" -> "cheval").
 check.(
   ~s|org_a FR "chevaux"|,
-  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_a"),
+  SearchDemo.Blog.search_posts!("chevaux", :fr, tenant: "org_a"),
   ["Les chevaux"]
 )
 
 check.(
   ~s|org_a FR "poisson grillé"|,
-  SearchDemo.Blog.search_posts!("poisson grillé", :french, tenant: "org_a"),
+  SearchDemo.Blog.search_posts!("poisson grillé", :fr, tenant: "org_a"),
   ["Cuisine"]
 )
 
 check.(
   ~s|org_b EN "connection"|,
-  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_b"),
+  SearchDemo.Blog.search_posts!("connection", :en, tenant: "org_b"),
   ["Running"]
 )
 
 # Tenant isolation: the SAME query+language in each org returns only that org's rows.
 check.(
   ~s|org_b FR "chevaux" (isolation)|,
-  SearchDemo.Blog.search_posts!("chevaux", :french, tenant: "org_b"),
+  SearchDemo.Blog.search_posts!("chevaux", :fr, tenant: "org_b"),
   ["Chevaux de course"]
 )
 
 check.(
   ~s|org_a cannot see org_b "connection"|,
-  SearchDemo.Blog.search_posts!("connection", :english, tenant: "org_a"),
+  SearchDemo.Blog.search_posts!("connection", :en, tenant: "org_a"),
   []
 )
 
