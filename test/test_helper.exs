@@ -50,6 +50,8 @@ CREATE TABLE test_search_documents (
   document_date date,
   client_ref text,
   line_count integer,
+  tags text[],
+  montant numeric,
   UNIQUE (org_id, source_type, source_id)
 )
 """)
@@ -66,6 +68,8 @@ CREATE TABLE test_products (
   name text,
   sku text,
   ref_interne text,
+  tags text[],
+  montant numeric,
   discontinued boolean NOT NULL DEFAULT false,
   language text NOT NULL
 )

@@ -256,7 +256,8 @@ own — and the demo uses all three side by side:
 |---|---|---|
 | **analysed text** | `fields` (+ `extra_text`) | matching words, stemmed and weighted |
 | **keyword** | `index_attribute` onto a string column | exact filters and facets — a status, a reference, a foreign key |
-| **date / number** | `index_attribute` onto a date or numeric column | range filters and sorting |
+| **date / number** | `index_attribute` onto a date or numeric column | range filters and sorting — `montant > 1000` |
+| **tags** | an array attribute, in `fields` *and* as an `index_attribute` | both at once: found by typing a tag, and filterable by it |
 
 A keyword column is stored raw and never analysed, which is exactly what an exact filter
 needs:
@@ -268,6 +269,27 @@ attribute :statut, :string, public?: true
 # on the source — typed as an atom there, flat on the index
 index_attribute :statut, :statut
 ```
+
+### Tags need both paths
+
+An array attribute — `tags: ["urgent", "vip"]` — belongs in **both** places, because they
+do different jobs:
+
+```elixir
+fields [:numero, :client_nom, :tags]   # typing "urgent" in the box finds it
+index_attribute :tags, :tags           # and you can filter and count on it
+```
+
+```elixir
+|> Ash.Query.filter(has(tags, "urgent"))
+```
+
+`has/2` is a native Ash function, so no SQL fragment is needed. Ash casts the source list
+into the index column, including a `{:array, :atom}` source into a string column, so the
+short form above is all it takes.
+
+Amounts work the same way, minus the text side — `index_attribute :montant, :montant`, then
+`filter(montant > 1000)` and `sort(montant: :desc_nils_last)`.
 
 The three compose in one query:
 

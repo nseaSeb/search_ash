@@ -15,7 +15,9 @@ defmodule SearchAsh.Info do
     resource
     |> fields()
     |> Enum.zip(values)
-    |> Enum.map(fn {field, value} -> {to_string(value || ""), Map.get(weights, field, :d)} end)
+    |> Enum.map(fn {field, value} ->
+      {SearchAsh.Text.indexable(value), Map.get(weights, field, :d)}
+    end)
   end
 
   @doc "Attribute holding each row's language."

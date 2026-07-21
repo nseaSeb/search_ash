@@ -179,6 +179,9 @@ tab badges (`SearchAsh.counts_by_type/3`), range filters and sorting on typed co
 from related records (`load` + `extra_text`), and a highlighted excerpt (`excerpt_length`
 plus `SearchCore.highlight/4`).
 
+**→ [A guided tour](documentation/tour.livemd) is a Livebook you can run against your own
+Postgres — the whole thing above, executable, in about a minute.**
+
 **→ [Building a global search](documentation/global-search.md) walks all of it, in order,
 from nothing to a working page** — including the two decisions that are easy to get wrong:
 which attribute to use as your `label_field`, and where to draw the authorization line.

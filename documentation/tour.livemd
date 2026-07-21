@@ -1,0 +1,554 @@
+# A guided tour of search_ash
+
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2FnseaSeb%2Fsearch_ash%2Fmain%2Fdocumentation%2Ftour.livemd)
+
+```elixir
+Mix.install(
+  [
+    {:search_ash, "~> 0.4"},
+    {:kino, "~> 0.14"},
+    # Ash policies need a SAT solver. `simple_sat` is pure Elixir, which keeps this
+    # notebook free of any compilation toolchain — `picosat_elixir` is a NIF.
+    {:simple_sat, "~> 0.1"}
+  ],
+  config: [
+    tour: [
+      ecto_repos: [Tour.Repo],
+      "Elixir.Tour.Repo": [
+        username: System.get_env("PGUSER", "postgres"),
+        password: System.get_env("PGPASSWORD", "postgres"),
+        hostname: System.get_env("PGHOST", "localhost"),
+        port: String.to_integer(System.get_env("PGPORT", "5432")),
+        database: "search_ash_tour",
+        pool_size: 2,
+        # Sans ça, chaque cellule noie son résultat sous le SQL généré.
+        log: false
+      ]
+    ]
+  ]
+)
+```
+
+## What you need
+
+**A reachable Postgres.** Everything else installs itself — the whole stack is pure Elixir,
+stemming included, so there is no toolchain to set up. Defaults are `postgres`/`postgres`
+on `localhost:5432`; override with the usual `PG*` environment variables before running the
+cell above.
+
+This notebook creates its own database, `search_ash_tour`, and drops its tables each run.
+Nothing you already have is touched.
+
+## The idea in one paragraph
+
+You declare **one index resource**. Each **source resource** mirrors itself into it on
+every write, inside the same transaction — so the index cannot drift from your data, and
+there is no separate search service to run. A row in the index carries what kind of thing
+it is, how to find it again, the stemmed text to match on, a label to display, and any
+typed columns you want to filter or sort on.
+
+The rest of this notebook is choosing what goes in those fields, and watching it work.
+
+## The repo
+
+```elixir
+defmodule Tour.Repo do
+  use AshPostgres.Repo, otp_app: :tour, warn_on_missing_ash_functions?: false
+
+  # `pg_trgm` powers the typo tolerance further down. If your Postgres user may not
+  # create extensions, drop it from this list — everything except that one section works
+  # without it.
+  def installed_extensions, do: ["pg_trgm"]
+  def min_pg_version, do: %Version{major: 15, minor: 0, patch: 0}
+end
+
+Tour.Repo.__adapter__().storage_up(Tour.Repo.config())
+Kino.start_child({Tour.Repo, []})
+```
+
+## The index
+
+An ordinary Ash resource. The extension adds the columns, the identity, the GIN index, and
+a `:global_search` action that filters and ranks.
+
+```elixir
+defmodule Tour.Search.Document do
+  use Ash.Resource,
+    domain: Tour.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.GlobalIndex]
+
+  postgres do
+    table "tour_documents"
+    repo Tour.Repo
+  end
+
+  global_index do
+    default_language :fr
+    fuzzy? true
+  end
+
+  attributes do
+    uuid_primary_key :id
+    # Filled by the sources below. Declared here, on the index — a source cannot add a
+    # column to a resource it does not own.
+    attribute :document_date, :date, public?: true   # date:    intervalles, tri
+    attribute :statut, :string, public?: true        # keyword: filtre exact, facettes
+    attribute :tags, {:array, :string}, public?: true # tableau: has/2
+    attribute :montant, :decimal, public?: true      # numérique: > 1000, tri
+  end
+end
+```
+
+## Two sources
+
+Two different kinds of thing, feeding one index. That is the whole point: one query across
+factures *and* clients.
+
+Watch `label_field`. It is the highest-leverage choice in the configuration: it decides
+what a result displays, it drives ranking, and it is the only thing typo tolerance looks
+at. For a facture, that is the number — people search `BL-2024-0012`, not the description.
+
+```elixir
+defmodule Tour.Facture do
+  use Ash.Resource,
+    domain: Tour.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
+
+  postgres do
+    table "tour_factures"
+    repo Tour.Repo
+  end
+
+  searchable do
+    index Tour.Search.Document
+    source_type :facture
+    # `:tags` est ici ET en index_attribute plus bas — les deux font des choses
+    # différentes : ici pour trouver la facture en tapant un tag, là pour filtrer dessus.
+    fields [:numero, :client_nom, :description, :tags]
+    label_field :numero
+    language :fr
+
+    # A hit in the number outranks one in the client name, which outranks the body.
+    weights %{numero: :a, client_nom: :b}
+
+    # Real columns on the index: filter and sort on them.
+    index_attribute :document_date, :date_emission
+    index_attribute :statut, :statut
+    index_attribute :tags, :tags
+    index_attribute :montant, :montant
+
+    # Store a readable excerpt for the results page.
+    excerpt_length 120
+  end
+
+  actions do
+    defaults [:read]
+    create :create,
+      accept: [:numero, :client_nom, :description, :date_emission, :statut, :tags, :montant]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :numero, :string, public?: true
+    attribute :client_nom, :string, public?: true
+    attribute :description, :string, public?: true
+    attribute :date_emission, :date, public?: true
+    attribute :statut, :string, public?: true
+    attribute :tags, {:array, :string}, public?: true
+    attribute :montant, :decimal, public?: true
+  end
+end
+```
+
+```elixir
+defmodule Tour.Client do
+  use Ash.Resource,
+    domain: Tour.Domain,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [SearchAsh.Source]
+
+  postgres do
+    table "tour_clients"
+    repo Tour.Repo
+  end
+
+  searchable do
+    index Tour.Search.Document
+    source_type :client
+    fields [:nom, :notes]
+    label_field :nom
+    language :fr
+    weights %{nom: :a}
+
+    # The SAME column as the facture's, from a DIFFERENT attribute — a client has no
+    # emission date, so its creation date is what "when is this from" means for it.
+    # One comparable axis is what makes "most recent first" mean anything on a mixed page.
+    index_attribute :document_date, &DateTime.to_date(&1.inserted_at)
+  end
+
+  actions do
+    defaults [:read]
+    create :create, accept: [:nom, :notes]
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :nom, :string, public?: true
+    attribute :notes, :string, public?: true
+    timestamps()
+  end
+end
+
+defmodule Tour.Domain do
+  use Ash.Domain, validate_config_inclusion?: false
+
+  resources do
+    resource Tour.Search.Document
+    resource Tour.Facture
+    resource Tour.Client
+  end
+end
+```
+
+## The schema
+
+In an application you would run `mix ash_postgres.generate_migrations` and the migration
+would be written for you, index included. A notebook has no migration generator, so here
+is the same schema by hand.
+
+Note the GIN index expression: `(search_text::tsvector)`. The column holds a **weighted
+tsvector literal** built in Elixir, so SQL casts it rather than calling `to_tsvector`. The
+index and the query must use the identical expression, or the index is silently skipped.
+
+```elixir
+alias Ecto.Adapters.SQL
+
+for t <- ~w(tour_documents tour_factures tour_clients) do
+  SQL.query!(Tour.Repo, "DROP TABLE IF EXISTS #{t}", [])
+end
+
+SQL.query!(Tour.Repo, """
+CREATE TABLE tour_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type text NOT NULL,
+  source_id text NOT NULL,
+  language text NOT NULL,
+  search_text text,
+  archived boolean NOT NULL DEFAULT false,
+  label text,
+  label_normalized text,
+  excerpt text,
+  document_date date,
+  statut text,
+  tags text[],
+  montant numeric,
+  UNIQUE (source_type, source_id)
+)
+""")
+
+SQL.query!(Tour.Repo, """
+CREATE INDEX tour_documents_search_idx
+ON tour_documents USING GIN ((search_text::tsvector))
+""")
+
+SQL.query!(Tour.Repo, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
+SQL.query!(Tour.Repo, """
+CREATE INDEX tour_documents_label_trgm_idx
+ON tour_documents USING GIN (label_normalized gin_trgm_ops)
+""")
+
+SQL.query!(Tour.Repo, """
+CREATE TABLE tour_factures (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  numero text, client_nom text, description text, date_emission date,
+  statut text, tags text[], montant numeric
+)
+""")
+
+SQL.query!(Tour.Repo, """
+CREATE TABLE tour_clients (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nom text, notes text,
+  inserted_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+)
+""")
+
+:ok
+```
+
+## Some data
+
+Nothing here mentions the index. Creating a record indexes it, in the same transaction.
+
+```elixir
+facture = fn attrs ->
+  Tour.Facture |> Ash.Changeset.for_create(:create, attrs) |> Ash.create!()
+end
+
+client = fn attrs ->
+  Tour.Client |> Ash.Changeset.for_create(:create, attrs) |> Ash.create!()
+end
+
+facture.(%{
+  numero: "BL-2024-0012",
+  client_nom: "Ferme des Chevaux",
+  description: "Livraison de foin pour les chevaux ; un cheval de trait.",
+  date_emission: ~D[2026-06-15],
+  statut: "payee",
+  tags: ["urgent", "fournisseur"],
+  montant: Decimal.new("1250.00")
+})
+
+facture.(%{
+  numero: "FA-2024-0113",
+  client_nom: "Boulangerie du coin",
+  description: "Farine et pain.",
+  date_emission: ~D[2026-07-21],
+  statut: "envoyee",
+  tags: ["export"],
+  montant: Decimal.new("480.50")
+})
+
+client.(%{nom: "Chevaux & Co", notes: "Éleveur de chevaux de course."})
+client.(%{nom: "Dupont", notes: "Client historique."})
+
+Tour.Search.Document |> Ash.read!() |> length()
+```
+
+## Search
+
+One query, across both entity types.
+
+```elixir
+require Ash.Query
+
+search = fn query ->
+  Tour.Search.Document
+  |> Ash.Query.for_read(:global_search, %{query: query})
+  |> Ash.read!()
+  |> Enum.map(
+    &%{
+      label: &1.label,
+      type: &1.source_type,
+      tier: &1.label_match_tier,
+      rank: Float.round(&1.search_rank, 4)
+    }
+  )
+end
+
+search.("chevaux")
+```
+
+Try `"cheval"`, or `"chevaux"` — both find the same rows. Indexing and querying run through
+the **same** stemming pipeline, so an inflected form and its stem always meet. That single
+property is what the whole design rests on.
+
+## Why that order
+
+Look at the `tier` column above. The client *named* "Chevaux & Co" comes first, even though
+the facture mentions horses far more often.
+
+Ranking is composite: the **label** tier first — `0` exact, `1` starts-with, `2` contains,
+`3` a body-only match — then `ts_rank` within a tier, then the primary key so pages stay
+stable. Someone typing a name expects the thing *called* that, not the document that talks
+about it most.
+
+```elixir
+search.("bl-2024-0012")
+```
+
+An exact reference lands at tier `0`. This is `label_field` earning its keep.
+
+## Typo tolerance
+
+```elixir
+search.("duont")
+```
+
+`duont` finds `Dupont`. That is `fuzzy? true`: on top of the full-text match, the
+normalized label is compared by trigram similarity and by substring, both served by one
+trigram index. `fuzzy_threshold` (0.35 by default) decides how close is close enough —
+tight enough that an exact reference stops dragging a look-alike one back with it.
+
+One property worth knowing before you pick a `label_field`: **similarity is computed
+against the whole label, so length dilutes it.** The same typo scores 0.44 against
+`Dupont` and only 0.24 against `Dupont et Fils` — the second falls under the threshold and
+is not found. Short, identifying labels get typo tolerance; long descriptive ones do not,
+whatever you set the threshold to.
+
+```elixir
+search.("0012")
+```
+
+A fragment of a reference works too, through the substring channel.
+
+## Filter and sort on a real column
+
+`index_attribute` gave the index a typed `document_date`, filled by both sources from
+whatever "the date this is from" means for them. It is an ordinary Ash attribute, so
+nothing new is needed:
+
+```elixir
+Tour.Search.Document
+|> Ash.Query.for_read(:global_search, %{query: ""})
+|> Ash.Query.unset([:sort])
+|> Ash.Query.sort(document_date: :desc_nils_last)
+|> Ash.read!()
+|> Enum.map(&%{label: &1.label, type: &1.source_type, date: &1.document_date})
+```
+
+`:desc_nils_last` on purpose: a source that fills no date leaves `NULL`, and Postgres puts
+`NULL`s **first** in a plain `:desc`.
+
+```elixir
+require Ash.Query
+
+Tour.Search.Document
+|> Ash.Query.for_read(:global_search, %{query: ""})
+|> Ash.Query.filter(document_date >= ^~D[2026-07-01])
+|> Ash.read!()
+|> Enum.map(& &1.label)
+```
+
+## Tags and amounts
+
+An array attribute belongs in **both** places, and they are not redundant. In `fields` it
+makes the record findable by typing a tag; as an `index_attribute` it becomes a column you
+can filter and count on.
+
+```elixir
+search.("urgent")
+```
+
+```elixir
+require Ash.Query
+
+Tour.Search.Document
+|> Ash.Query.for_read(:global_search, %{query: ""})
+|> Ash.Query.filter(has(tags, "export"))
+|> Ash.read!()
+|> Enum.map(&%{label: &1.label, tags: &1.tags})
+```
+
+`has/2` is a native Ash function — no SQL fragment needed. Ash casts the source list into
+the index column, so `index_attribute :tags, :tags` is all it takes, even when the source
+is `{:array, :atom}` and the column is `{:array, :string}`.
+
+An amount is the same idea without the text side: filter by range, sort by it.
+
+```elixir
+require Ash.Query
+
+Tour.Search.Document
+|> Ash.Query.for_read(:global_search, %{query: ""})
+|> Ash.Query.filter(montant > 1000)
+|> Ash.Query.sort(montant: :desc_nils_last)
+|> Ash.read!()
+|> Enum.map(&%{label: &1.label, montant: &1.montant, statut: &1.statut})
+```
+
+`statut` above is a **keyword** column: stored raw, never analysed, which is exactly what
+an exact filter or a facet needs — `filter(statut == "payee")`.
+
+## A results page
+
+Tabs, badges, a total, and a page — everything a real screen needs.
+
+```elixir
+page =
+  Tour.Search.Document
+  |> Ash.Query.for_read(:global_search, %{query: "chevaux", types: [:client]})
+  |> Ash.read!(page: [limit: 10, offset: 0, count: true])
+
+counts = SearchAsh.counts_by_type(Tour.Search.Document, "chevaux")
+
+%{
+  tabs: counts,
+  total_for_this_tab: page.count,
+  results: Enum.map(page.results, & &1.label)
+}
+```
+
+`types` restricts to entity kinds — `nil` and `[]` both mean "no filter", so an empty
+multi-select never silently returns nothing. `counts_by_type/3` runs the same action, so
+both the badges and the results honour whatever policies you put on the index.
+
+## Highlighting
+
+`excerpt_length` stored a readable excerpt. `SearchCore.highlight/4` marks the words that
+actually matched, and returns segments rather than markup — the rendering stays yours.
+
+```elixir
+require Ash.Query
+
+[doc | _] = Tour.Search.Document
+            |> Ash.Query.for_read(:global_search, %{query: "chevaux"})
+            |> Ash.Query.filter(source_type == "facture")
+            |> Ash.read!()
+
+SearchCore.highlight(doc.excerpt, "chevaux", :fr)
+```
+
+It runs the same pipeline as the search, so a word is highlighted exactly when it is a word
+that matched — `chevaux` marks `cheval`, `idee` would mark `idées`.
+
+## When the index could drift, and how it does not
+
+Indexing rides on Ash actions. A write that goes straight to the database never reaches it:
+
+```elixir
+alias Ecto.Adapters.SQL
+
+SQL.query!(Tour.Repo, """
+INSERT INTO tour_factures (numero, client_nom, description, date_emission)
+VALUES ('F-LEGACY', 'Client historique', 'Ancienne facture', '2026-01-05')
+""")
+
+search.("ancienne")
+```
+
+Nothing — the sync never fired. Two functions repair that, and returning the count is what
+makes it measurable:
+
+```elixir
+SearchAsh.reindex(Tour.Facture)
+search.("ancienne")
+```
+
+```elixir
+alias Ecto.Adapters.SQL
+
+SQL.query!(Tour.Repo, "DELETE FROM tour_factures WHERE numero = 'F-LEGACY'")
+# The index row survives the raw delete and still surfaces, pointing at nothing:
+before = search.("ancienne") |> length()
+
+swept = SearchAsh.prune(Tour.Facture)
+
+%{orphans_before: before, swept: swept, after: search.("ancienne") |> length()}
+```
+
+`prune/2` returns how many rows it acted on, which doubles as a drift metric: `0` on a
+healthy database. Anything else means something is writing around Ash.
+
+## Where to go next
+
+- **[Building a global search](global-search.md)** — the same ground as a guide, with the
+  decisions spelled out: choosing `label_field`, one date axis for many sources, and where
+  to draw the authorization line.
+- **[Architecture](architecture.md)** — the indexing and query paths, and the pipeline
+  symmetry everything rests on.
+- `SearchAsh.GlobalIndex` and `SearchAsh.Source` — every option and its default.
+
+```elixir
+alias Ecto.Adapters.SQL
+
+for t <- ~w(tour_documents tour_factures tour_clients) do
+  SQL.query!(Tour.Repo, "DROP TABLE IF EXISTS #{t}", [])
+end
+
+:ok
+```

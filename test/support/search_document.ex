@@ -33,5 +33,7 @@ defmodule SearchAsh.Test.SearchDocument do
     attribute :document_date, :date, public?: true
     attribute :client_ref, :string, public?: true
     attribute :line_count, :integer, public?: true
+    attribute :tags, {:array, :string}, public?: true
+    attribute :montant, :decimal, public?: true
   end
 end

@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+
+- **An array attribute in `fields` corrupted the index, silently.** `to_string/1` on a list
+  takes the iodata path, so a `{:array, :string}` attribute — a tag list, the common case —
+  was concatenated into one token: `["urgent", "vip"]` became `"urgentvip"`. Neither tag was
+  findable afterwards, and a junk token entered the index with nothing to signal it.
+  `["bl-2024", "urgent"]` was worse: `"bl-2024urgent"` tokenized to `["bl", "2024urgent"]`.
+  A list of *atoms* raised an `ArgumentError` instead, which at least showed.
+
+  Members are now joined with a separator and tokenized apart, so `fields [:titre, :tags]`
+  makes each tag findable from the search box. Applies to `fields`, `extra_text` and
+  `label_field`, on both extensions.
+
+  **This unlocks a capability, it does not merely document one.** Filtering and faceting on
+  tags already worked through `index_attribute` (`has(tags, "urgent")`); full-text search of
+  a tag typed into the search box did not. The two paths are complementary.
+
+  **Upgrading needs no migration. Whether it needs a reindex depends on where you stand:**
+
+  - **You already have an array attribute in `fields`** — you are the case this fixes, and
+    your existing rows are corrupt. Upgrading repairs *future* writes only, so **reindex
+    per tenant** (`SearchAsh.reindex(MyApp.Resource, tenant: org)`) to repair what is
+    already stored. Until then those tags stay unfindable.
+  - **You add one afterwards** to take advantage of this — reindex too, since the stored
+    text changes.
+  - **You use no array attribute in `fields`** — nothing to do.
+
+### Documentation
+
+- Array attributes (tags) and numeric ones (amounts) are now shown as first-class: both
+  the `fields` path and the `index_attribute` path, with `has/2` for tag filtering — a
+  native Ash function, not a raw SQL fragment — and range filters and sorting for amounts.
+
 ## 0.4.0
 Everything a **results page** needs, then everything it needs to *filter, sort and rank* —
 driven by the first real-world integration. One release, one migration, one reindex from

@@ -31,7 +31,8 @@ SearchDemo.Blog.create_post!(
 SearchDemo.Sales.create_facture!(
   %{numero: "F-001", client_nom: "Ferme des Chevaux",
     description: "Livraison de foin pour les chevaux.",
-    date_emission: ~D[2026-06-15], statut: :payee},
+    date_emission: ~D[2026-06-15], statut: :payee,
+    tags: ["urgent", "fournisseur"], montant: Decimal.new("1250.00")},
   tenant: "org_a"
 )
 
@@ -48,7 +49,8 @@ SearchDemo.Sales.create_produit!(
 facture_lignes =
   SearchDemo.Sales.create_facture!(
     %{numero: "F-002", client_nom: "Boulangerie du coin", description: "Farine et pain.",
-      date_emission: ~D[2026-07-21], statut: :envoyee},
+      date_emission: ~D[2026-07-21], statut: :envoyee,
+      tags: ["export"], montant: Decimal.new("480.50")},
     tenant: "org_a"
   )
 

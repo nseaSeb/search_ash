@@ -88,5 +88,10 @@ defmodule SearchDemo.Search.Document do
     # The source types it as an atom; the index keeps a flat string, which is all an
     # exact filter needs.
     attribute :statut, :string, public?: true
+
+    # Un tableau et un numérique : le premier se filtre avec `has/2`, le second par
+    # intervalle. Tous deux remplis par `index_attribute` depuis la source.
+    attribute :tags, {:array, :string}, public?: true
+    attribute :montant, :decimal, public?: true
   end
 end

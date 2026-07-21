@@ -52,12 +52,12 @@ defmodule SearchAsh.Source.Document do
 
     fields =
       Enum.map(Info.fields(resource), fn field ->
-        {to_string(Map.get(record, field) || ""), Map.get(weights, field, :d)}
+        {SearchAsh.Text.indexable(Map.get(record, field)), Map.get(weights, field, :d)}
       end)
 
     extra =
       Enum.flat_map(Info.extra_texts(resource), fn %{source: fun, weight: weight} ->
-        record |> fun.() |> List.wrap() |> Enum.map(&{to_string(&1 || ""), weight})
+        record |> fun.() |> List.wrap() |> Enum.map(&{SearchAsh.Text.indexable(&1), weight})
       end)
 
     fields ++ extra
@@ -200,7 +200,7 @@ defmodule SearchAsh.Source.Document do
     do: Map.get(record, attribute) not in [nil, false]
 
   defp label(_record, nil), do: nil
-  defp label(record, field), do: to_string(Map.get(record, field) || "")
+  defp label(record, field), do: SearchAsh.Text.indexable(Map.get(record, field))
 
   # The normalized label (`Maraîcher` → `maraicher`) that `:global_search` compares the
   # normalized query against, both for the exact/prefix/substring ranking tiers and for

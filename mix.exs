@@ -1,7 +1,7 @@
 defmodule SearchAsh.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.4.1"
   @source_url "https://github.com/nseaSeb/search_ash"
 
   def project do
@@ -107,6 +107,7 @@ defmodule SearchAsh.MixProject do
       source_url: @source_url,
       extras: [
         "README.md",
+        "documentation/tour.livemd",
         "documentation/global-search.md",
         "documentation/architecture.md",
         "documentation/upgrading-0.4.md",

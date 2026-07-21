@@ -19,7 +19,7 @@ defmodule SearchAsh.Test.Product do
   searchable do
     index SearchAsh.Test.SearchDocument
     source_type :product
-    fields [:name, :sku]
+    fields [:name, :sku, :tags]
     language_attribute :language
     label_field :name
     # The reference weighs most, the name next; anything unlisted stays :d.
@@ -29,6 +29,10 @@ defmodule SearchAsh.Test.Product do
     # up index_attribute sources. Product has no `extra_text`/`load` and an
     # attribute-driven `archived`, so it is the one fixture that reaches that code.
     index_attribute :client_ref, :ref_interne
+    # Les deux chemins sont complémentaires : `fields` rend un tag trouvable dans la barre
+    # de recherche, `index_attribute` permet de filtrer et de faire des facettes dessus.
+    index_attribute :tags, :tags
+    index_attribute :montant, :montant
     archived :discontinued
   end
 
@@ -36,12 +40,12 @@ defmodule SearchAsh.Test.Product do
     defaults [:read]
 
     create :create do
-      accept [:name, :sku, :language, :discontinued, :ref_interne]
+      accept [:name, :sku, :language, :discontinued, :ref_interne, :tags, :montant]
     end
 
     # NB: no `require_atomic? false` here — SearchAsh.Source sets it automatically.
     update :update do
-      accept [:name, :sku, :language, :discontinued, :ref_interne]
+      accept [:name, :sku, :language, :discontinued, :ref_interne, :tags, :montant]
     end
 
     destroy :destroy do
@@ -55,6 +59,8 @@ defmodule SearchAsh.Test.Product do
     attribute :sku, :string, public?: true
     attribute :discontinued, :boolean, public?: true, default: false
     attribute :ref_interne, :string, public?: true
+    attribute :tags, {:array, :string}, public?: true
+    attribute :montant, :decimal, public?: true
 
     attribute :language, :atom,
       allow_nil?: false,

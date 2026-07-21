@@ -35,7 +35,9 @@ Sales.create_facture!(
   %{
     numero: "F-001",
     client_nom: "Ferme des Chevaux",
-    description: "Livraison de foin pour les chevaux ; un cheval de trait supplémentaire."
+    description: "Livraison de foin pour les chevaux ; un cheval de trait supplémentaire.",
+    tags: ["fournisseur"],
+    montant: Decimal.new("80.00")
   },
   tenant: "org_a"
 )
@@ -57,7 +59,9 @@ Sales.create_facture!(
     client_nom: "Boulangerie du coin",
     description: "Farine et pain.",
     date_emission: ~D[2026-07-21],
-    statut: :envoyee
+    statut: :envoyee,
+    tags: ["export", "urgent"],
+    montant: Decimal.new("480.50")
   },
   tenant: "org_a"
 )
@@ -162,6 +166,43 @@ check.(
 )
 
 check.("excerpt is stored for display", hd(tomates).excerpt =~ "Tomates anciennes")
+
+# Tags : un tableau, présent sur les DEUX chemins — et ce n'est pas redondant.
+check.(
+  "tags en plein texte : taper \"export\" trouve la facture",
+  "F-002" in Enum.map(search.("export", "org_a", admin), & &1.label)
+)
+
+par_tag =
+  Document
+  |> Ash.Query.for_read(:global_search, %{query: ""})
+  |> Ash.Query.set_tenant("org_a")
+  |> Ash.Query.filter(has(tags, "urgent"))
+  |> Ash.read!(actor: admin)
+
+check.(
+  "tags en filtre : has(tags, \"urgent\") garde F-002 et EXCLUT F-001, qui a un autre tag",
+  Enum.map(par_tag, & &1.label) == ["F-002"] and
+    "fournisseur" in (Enum.find(search.("chevaux", "org_a", admin), &(&1.label == "F-001")) ||
+                        %{tags: []}).tags
+)
+
+# Montant : un numérique, filtre d'intervalle et tri.
+gros =
+  Document
+  |> Ash.Query.for_read(:global_search, %{query: ""})
+  |> Ash.Query.set_tenant("org_a")
+  |> Ash.Query.filter(montant > 100)
+  |> Ash.read!(actor: admin)
+
+# F-001 est à 80, F-002 à 480,50 : le seuil passe entre les deux, donc un filtre
+# neutralisé se ferait prendre.
+check.(
+  "montant > 100 : garde F-002 (480,50) et écarte F-001 (80)",
+  Enum.map(gros, & &1.label) == ["F-002"]
+)
+
+IO.puts("")
 
 # Les TROIS types d'index, sur une même ligne : texte analysé (fields -> search_text),
 # keyword (statut, stocké brut pour un filtre exact) et date (document_date).

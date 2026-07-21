@@ -20,7 +20,7 @@ defmodule SearchDemo.Sales.Facture do
   searchable do
     index SearchDemo.Search.Document
     source_type :facture
-    fields [:numero, :client_nom, :description]
+    fields [:numero, :client_nom, :description, :tags]
     label_field :numero
     # Index the lines too ("which factures mention tomatoes?"): `load` makes the
     # relationship available, `extra_text` derives text from it. A direct write to a
@@ -44,6 +44,14 @@ defmodule SearchDemo.Sales.Facture do
     index_attribute :document_date, :date_emission
     index_attribute :statut, :statut
 
+    # Les tags vivent sur les DEUX chemins, et ce n'est pas redondant : dans `fields` pour
+    # qu'un tag tapé dans la barre trouve la facture, en colonne pour pouvoir filtrer et
+    # compter dessus avec `has/2`.
+    index_attribute :tags, :tags
+
+    # Un montant : filtre d'intervalle et tri.
+    index_attribute :montant, :montant
+
     # Store a raw excerpt for the results page.
     excerpt_length 160
   end
@@ -61,11 +69,29 @@ defmodule SearchDemo.Sales.Facture do
     defaults [:read]
 
     create :create do
-      accept [:numero, :client_nom, :description, :language, :date_emission, :statut]
+      accept [
+        :numero,
+        :client_nom,
+        :description,
+        :language,
+        :date_emission,
+        :statut,
+        :tags,
+        :montant
+      ]
     end
 
     update :update do
-      accept [:numero, :client_nom, :description, :language, :date_emission, :statut]
+      accept [
+        :numero,
+        :client_nom,
+        :description,
+        :language,
+        :date_emission,
+        :statut,
+        :tags,
+        :montant
+      ]
     end
 
     destroy :destroy do
@@ -80,6 +106,8 @@ defmodule SearchDemo.Sales.Facture do
     attribute :client_nom, :string, public?: true
     attribute :description, :string, public?: true
     attribute :date_emission, :date, public?: true
+    attribute :tags, {:array, :string}, public?: true
+    attribute :montant, :decimal, public?: true
 
     attribute :statut, :atom,
       allow_nil?: false,
