@@ -46,12 +46,17 @@ defmodule SearchAsh.PostgresSearchTest do
     assert [%{title: "Boulangerie"}] = search("boulan", "a")
   end
 
-  test "blank and too-short queries list all (no crash)" do
+  test "a blank query lists all; a non-blank query with no usable token matches nothing" do
     create(%{title: "X", body: "y", language: :fr}, "a")
     create(%{title: "Z", body: "w", language: :fr}, "a")
 
+    # Blank → list-all (a list UI before the user types).
     assert length(search("", "a")) == 2
-    assert length(search("b", "a")) == 2
+    # Non-blank but tokenless (single char < min_length, stopwords): the user searched
+    # for something unsearchable — 0.4.0 returns nothing instead of the whole base.
+    assert search("b", "a") == []
+    assert search("de", "a") == []
+    assert search("le la de", "a") == []
   end
 
   test "a query in the wrong language does not match" do

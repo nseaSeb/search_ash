@@ -105,6 +105,15 @@ defmodule SearchAsh.IndexPoliciesTest do
     attrs = SearchAsh.Source.Document.to_attrs(SecuredProduct, %{id: "1", name: "Vis"})
 
     assert Enum.sort(Map.keys(attrs)) ==
-             [:archived, :label, :language, :search_text, :source_id, :source_type]
+             [
+               :archived,
+               :excerpt,
+               :label,
+               :label_normalized,
+               :language,
+               :search_text,
+               :source_id,
+               :source_type
+             ]
   end
 end

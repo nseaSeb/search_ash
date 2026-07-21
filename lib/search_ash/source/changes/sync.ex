@@ -31,19 +31,30 @@ defmodule SearchAsh.Source.Changes.Sync do
   @impl true
   def atomic(_changeset, _opts, _context), do: :ok
 
-  # Bulk (atomic_batches) path: mirror every updated record. We don't apply the
-  # `recompute?` short-circuit here — `changing_attribute?` isn't meaningful for an atomic
-  # changeset, and re-upserting an unchanged row is harmless (idempotent upsert).
+  # Bulk (atomic_batches) path: mirror every updated record — through `upsert_all/4`, so
+  # a `load`ed relationship costs one query per batch, not one per record. We don't apply
+  # the `recompute?` short-circuit here — `changing_attribute?` isn't meaningful for an
+  # atomic changeset, and re-upserting an unchanged row is harmless (idempotent upsert).
+  # One bulk action carries one tenant/domain, so chunking keeps the (theoretical) mixed
+  # batch correct without reordering anything.
   @impl true
   def after_batch(changesets_and_records, _opts, _context) do
-    Enum.flat_map(changesets_and_records, fn {changeset, record} ->
-      notifications = upsert(changeset.resource, record, changeset.tenant)
-      [{:ok, record} | notifications]
+    changesets_and_records
+    |> Enum.chunk_by(fn {changeset, _record} -> {changeset.tenant, changeset.domain} end)
+    |> Enum.flat_map(fn [{changeset, _record} | _] = chunk ->
+      records = Enum.map(chunk, &elem(&1, 1))
+
+      results =
+        Index.upsert_all(changeset.resource, records, changeset.tenant, changeset.domain)
+
+      Enum.flat_map(Enum.zip(records, results), fn {record, {_result, notifications}} ->
+        [{:ok, record} | notifications]
+      end)
     end)
   end
 
   defp sync(changeset, record) do
-    case upsert(changeset.resource, record, changeset.tenant) do
+    case upsert(changeset, record) do
       [] -> {:ok, record}
       notifications -> {:ok, record, notifications}
     end
@@ -53,8 +64,10 @@ defmodule SearchAsh.Source.Changes.Sync do
   # hand them back to Ash for dispatch — otherwise they'd be "missed" inside the source
   # action's transaction. The write itself lives in `Source.Index`, shared with the destroy
   # path and with `SearchAsh.reindex/2`+`reindex_one/3`.
-  defp upsert(resource, record, tenant) do
-    {_result, notifications} = Index.upsert(resource, record, tenant)
+  defp upsert(changeset, record) do
+    {_result, notifications} =
+      Index.upsert(changeset.resource, record, changeset.tenant, changeset.domain)
+
     notifications
   end
 
@@ -63,16 +76,23 @@ defmodule SearchAsh.Source.Changes.Sync do
   end
 
   # For an attribute-driven `archived`, recompute only when an indexed field, the language,
-  # or the archived attribute changed. For a function-driven `archived` we can't introspect
-  # its inputs, so recompute on every update.
+  # or the archived attribute changed. Recompute on *every* update when the document
+  # depends on something `changing_attribute?` can't see: a function-driven `archived`,
+  # or text derived from `extra_text`/`load` (relations managed through this action —
+  # `manage_relationship` — never show up as a changing attribute).
   defp recompute_on_update?(changeset) do
-    case Info.archived(changeset.resource) do
-      fun when is_function(fun) ->
+    resource = changeset.resource
+
+    cond do
+      is_function(Info.archived(resource)) ->
         true
 
-      _attribute_or_nil ->
+      Info.extra_texts(resource) != [] or Info.load(resource) ->
+        true
+
+      true ->
         Enum.any?(
-          guarded_attributes(changeset.resource),
+          guarded_attributes(resource),
           &Ash.Changeset.changing_attribute?(changeset, &1)
         )
     end
@@ -85,7 +105,10 @@ defmodule SearchAsh.Source.Changes.Sync do
     # one of the searchable `fields` (search the body, display the subject). Nil when no
     # `label_field` is configured.
     label = List.wrap(Info.label_field(resource))
-    base = Info.fields(resource) ++ language ++ label
+    # Same for an attribute-driven `index_attribute`: changing only a document's date must
+    # refresh the indexed date, even though no searchable field moved.
+    derived = SearchAsh.Source.Document.index_attribute_attributes(resource)
+    base = Info.fields(resource) ++ language ++ label ++ derived
 
     case Info.archived(resource) do
       attribute when is_atom(attribute) and not is_nil(attribute) -> [attribute | base]

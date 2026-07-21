@@ -18,10 +18,20 @@ defmodule SearchAsh.Test.SearchDocument do
 
   global_index do
     default_language :fr
+    # Class :b priced almost level with :a, instead of Postgres' 0.4. Field-to-class is
+    # each source's call; what a class is WORTH belongs here, or ranks from different
+    # entity types would not be comparable.
+    weight_values %{b: 0.9}
   end
 
   attributes do
     uuid_primary_key :id
     attribute :org_id, :string, allow_nil?: false, public?: true
+
+    # Typed columns filled by sources' `index_attribute`. Declared here, on the index —
+    # a source cannot add a column to a resource it does not own.
+    attribute :document_date, :date, public?: true
+    attribute :client_ref, :string, public?: true
+    attribute :line_count, :integer, public?: true
   end
 end

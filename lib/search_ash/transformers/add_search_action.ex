@@ -34,15 +34,32 @@ defmodule SearchAsh.Transformers.AddSearchAction do
       {:ok, preparation} =
         Ash.Resource.Builder.build_preparation(SearchAsh.Preparations.Search, [])
 
+      {:ok, pagination} = Ash.Resource.Builder.build_pagination(pagination_opts(dsl))
+
       {:ok, action} =
         Ash.Resource.Builder.build_action(:read, action_name,
           arguments: [query_arg, language_arg],
-          preparations: [preparation]
+          preparations: [preparation],
+          pagination: pagination
         )
 
       {:ok, Transformer.add_entity(dsl, [:actions], action)}
     end
   end
+
+  # Offset and keyset, never required — an unpaginated call still returns a plain list.
+  # `default_limit` flips `paginate_by_default?` with it: asking for a default bound only
+  # means something if a caller who passes no page gets it.
+  defp pagination_opts(dsl) do
+    default_limit = Transformer.get_option(dsl, [:search], :default_limit)
+
+    [offset?: true, keyset?: true, countable: true, required?: false]
+    |> put_unless_nil(:default_limit, default_limit)
+    |> Keyword.put(:paginate_by_default?, not is_nil(default_limit))
+  end
+
+  defp put_unless_nil(opts, _key, nil), do: opts
+  defp put_unless_nil(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp action_defined?(dsl, name) do
     dsl

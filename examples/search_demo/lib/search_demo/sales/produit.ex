@@ -19,9 +19,15 @@ defmodule SearchDemo.Sales.Produit do
 
   searchable do
     index SearchDemo.Search.Document
-    source_type(:produit)
+    source_type :produit
     fields [:reference, :libelle, :description]
-    label_field(:libelle)
+    label_field :libelle
+    weights %{reference: :a, libelle: :b}
+
+    # The SAME index column as Facture's, filled from a DIFFERENT source attribute: a
+    # produit has no emission date, so its creation date is what "when is this document
+    # from" means for it. That is what keeps one date axis comparable across entity types.
+    index_attribute :document_date, &DateTime.to_date(&1.inserted_at)
   end
 
   actions do

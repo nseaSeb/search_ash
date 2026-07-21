@@ -15,6 +15,7 @@ defmodule SearchDemo.SearchTest do
     for schema <- [
           Document,
           SearchDemo.Post,
+          SearchDemo.Sales.Ligne,
           SearchDemo.Sales.Facture,
           SearchDemo.Sales.Client,
           SearchDemo.Sales.Produit,
@@ -55,9 +56,9 @@ defmodule SearchDemo.SearchTest do
       assert length(SearchDemo.Blog.search_posts!("", :fr, tenant: "org_a")) == 1
     end
 
-    test "too-short query (< min_length) lists all instead of crashing" do
+    test "too-short query (< min_length) matches nothing (0.4.0)" do
       SearchDemo.Blog.create_post!(%{title: "X", body: "y", language: :fr}, tenant: "org_a")
-      assert length(SearchDemo.Blog.search_posts!("b", :fr, tenant: "org_a")) == 1
+      assert SearchDemo.Blog.search_posts!("b", :fr, tenant: "org_a") == []
     end
 
     test "prefix — a partial word matches" do
@@ -128,11 +129,14 @@ defmodule SearchDemo.SearchTest do
       refute "F-001" in labels(search("chevaux", "org_a"))
     end
 
-    test "results are ranked, most relevant first" do
+    test "results are ranked: label match first, then ts_rank" do
       results = search("chevaux", "org_a")
-      # F-001 mentions cheval/chevaux twice → ranks above the client (once).
-      assert hd(results).label == "F-001"
-      assert results == Enum.sort_by(results, & &1.search_rank, :desc)
+      # 0.4.0 ranks by label tier before ts_rank: "Chevaux & Co" *starts with* the
+      # term, so it outranks F-001 — whose body mentions horses more often but whose
+      # label ("F-001") says nothing to the user who typed "chevaux".
+      # (`labels/1` sorts, so map here: this asserts the ORDER.)
+      assert Enum.map(results, & &1.label) == ["Chevaux & Co", "F-001"]
+      assert Enum.map(results, & &1.label_match_tier) == [1, 3]
     end
 
     test "tenant isolation — look-alike rows never cross tenants" do
@@ -147,9 +151,11 @@ defmodule SearchDemo.SearchTest do
       assert ["F-002"] = labels(search("boulan", "org_a"))
     end
 
-    test "blank / too-short query lists all (no crash)" do
+    test "blank query lists all; a tokenless query matches nothing" do
       assert length(search("", "org_a")) == 3
-      assert length(search("b", "org_a")) == 3
+      # 0.4.0: "b" and "de" produce no usable token — nothing, not the whole base.
+      assert search("b", "org_a") == []
+      assert search("de", "org_a") == []
     end
 
     test "every result carries (source_type, source_id) for linking" do
@@ -251,6 +257,100 @@ defmodule SearchDemo.SearchTest do
 
   defp search(query, tenant, actor),
     do: SearchDemo.Search.global_search!(query, :fr, tenant: tenant, actor: actor)
+
+  describe "0.4.0 — results-page features, end to end" do
+    test "fuzzy: a typo in the label still finds the client" do
+      SearchDemo.Sales.create_client!(%{nom: "Dupont", notes: "RAS"}, tenant: "org_a")
+
+      assert ["Dupont"] = labels(search("duont", "org_a"))
+    end
+
+    test "fuzzy: a fragment of a reference finds the facture" do
+      SearchDemo.Sales.create_facture!(
+        %{numero: "BL-2024-0012", client_nom: "X", description: "Y"},
+        tenant: "org_a"
+      )
+
+      assert ["BL-2024-0012"] = labels(search("0012", "org_a"))
+    end
+
+    test "extra_text: a facture is found by the text of its lignes" do
+      facture =
+        SearchDemo.Sales.create_facture!(
+          %{numero: "F-100", client_nom: "Ferme", description: "Livraison"},
+          tenant: "org_a"
+        )
+
+      SearchDemo.Sales.create_ligne!(
+        %{facture_id: facture.id, designation: "Tomates anciennes 2kg"},
+        tenant: "org_a"
+      )
+
+      # The ligne came after the facture's sync — reconcile (any facture write would too).
+      SearchAsh.reindex_one(SearchDemo.Sales.Facture, facture.id, tenant: "org_a")
+
+      assert [doc] = search("tomates", "org_a")
+      assert doc.label == "F-100"
+      # excerpt_length 160: the raw text (fields + lignes) is stored for display.
+      assert doc.excerpt =~ "Tomates anciennes"
+    end
+
+    test "counts_by_type/3 gives the tab badges" do
+      SearchDemo.Sales.create_facture!(
+        %{numero: "F-200", client_nom: "Chevaux & Co", description: "Foin"},
+        tenant: "org_a"
+      )
+
+      SearchDemo.Sales.create_client!(%{nom: "Chevaux & Co", notes: ""}, tenant: "org_a")
+
+      # The index is policied and fails closed, so the counts compose with the actor's
+      # role like the search itself does: an admin counts both types, support only clients.
+      assert SearchAsh.counts_by_type(Document, "chevaux",
+               tenant: "org_a",
+               actor: user(:admin, "org_a")
+             ) == %{"facture" => 1, "client" => 1}
+
+      assert SearchAsh.counts_by_type(Document, "chevaux",
+               tenant: "org_a",
+               actor: user(:support, "org_a")
+             ) == %{"client" => 1}
+    end
+
+    test "pagination: the results page can count and slice" do
+      for i <- 1..5 do
+        SearchDemo.Sales.create_facture!(
+          %{numero: "F-30#{i}", client_nom: "Ferme des chevaux", description: "Foin"},
+          tenant: "org_a"
+        )
+      end
+
+      page =
+        Document
+        |> Ash.Query.for_read(:global_search, %{query: "chevaux"})
+        |> Ash.Query.set_tenant("org_a")
+        |> Ash.read!(page: [limit: 2, offset: 0, count: true], authorize?: false)
+
+      assert page.count == 5
+      assert length(page.results) == 2
+    end
+
+    test "types: tabs restrict the entity kinds searched" do
+      SearchDemo.Sales.create_facture!(
+        %{numero: "F-400", client_nom: "Chevaux & Co", description: ""},
+        tenant: "org_a"
+      )
+
+      SearchDemo.Sales.create_client!(%{nom: "Chevaux & Co", notes: ""}, tenant: "org_a")
+
+      results =
+        Document
+        |> Ash.Query.for_read(:global_search, %{query: "chevaux", types: [:client]})
+        |> Ash.Query.set_tenant("org_a")
+        |> Ash.read!(authorize?: false)
+
+      assert Enum.map(results, & &1.source_type) == ["client"]
+    end
+  end
 
   # Memoised per (role, tenant): inserting a fresh row on every search would litter the
   # table, and an actor only has to carry a role.

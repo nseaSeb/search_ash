@@ -23,6 +23,14 @@ defmodule SearchAsh.Test.Invoice do
     source_type :invoice
     fields [:number]
     label_field :number
+    # Both combined with `on_destroy :archive` on purpose: the archive path re-upserts the
+    # row rather than rebuilding the document, so this fixture pins that an archived row
+    # keeps every stored column — the excerpt and the typed ones included.
+    excerpt_length 50
+    index_attribute :client_ref, :number
+    # The SAME index column Order fills, from a DIFFERENT attribute: one comparable date
+    # axis across entity types is what makes "most recent first" work on a mixed page.
+    index_attribute :document_date, :date_facture
     archived fn record -> not is_nil(record.deleted_at) end
     on_destroy :archive
   end
@@ -31,12 +39,12 @@ defmodule SearchAsh.Test.Invoice do
     defaults [:read]
 
     create :create do
-      accept [:number, :language]
+      accept [:number, :language, :date_facture]
     end
 
     # NB: no `require_atomic? false` here — SearchAsh.Source sets it automatically.
     update :update do
-      accept [:number, :deleted_at, :language]
+      accept [:number, :deleted_at, :language, :date_facture]
     end
 
     destroy :destroy do
@@ -47,6 +55,7 @@ defmodule SearchAsh.Test.Invoice do
     uuid_primary_key :id
     attribute :org_id, :string, allow_nil?: false, public?: true
     attribute :number, :string, public?: true
+    attribute :date_facture, :date, public?: true
     attribute :deleted_at, :utc_datetime_usec, public?: true
 
     attribute :language, :atom,

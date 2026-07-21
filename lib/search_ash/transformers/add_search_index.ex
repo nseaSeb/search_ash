@@ -22,7 +22,9 @@ defmodule SearchAsh.Transformers.AddSearchIndex do
     if table do
       search_text = Transformer.get_option(dsl, [:search], :search_text_attribute) || :search_text
       name = Transformer.get_option(dsl, [:search], :index_name) || "#{table}_search_idx"
-      expression = "(to_tsvector('simple', #{search_text}))"
+      # The column holds a weighted tsvector *literal*, so the index casts rather than
+      # calling `to_tsvector` — the query side must use the identical expression.
+      expression = "(#{search_text}::tsvector)"
 
       if index_defined?(dsl, name) do
         {:ok, dsl}

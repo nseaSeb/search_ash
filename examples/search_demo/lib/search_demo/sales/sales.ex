@@ -5,7 +5,13 @@ defmodule SearchDemo.Sales do
   resources do
     resource SearchDemo.Sales.Facture do
       define :create_facture, action: :create
+      define :update_facture, action: :update
       define :destroy_facture, action: :destroy
+    end
+
+    resource SearchDemo.Sales.Ligne do
+      define :create_ligne, action: :create
+      define :update_ligne, action: :update
     end
 
     resource SearchDemo.Sales.Client do

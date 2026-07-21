@@ -51,6 +51,24 @@ defmodule SearchAsh do
         required: true,
         doc: "Attributes whose text is concatenated and indexed for search."
       ],
+      weights: [
+        type: {:map, :atom, {:in, [:a, :b, :c, :d]}},
+        default: %{},
+        doc:
+          "How much each field counts towards the rank: `%{title: :a, body: :c}`. `:a` is " <>
+            "the strongest, `:d` (the default for any field left out) the weakest — so a " <>
+            "hit in a title outranks the same hit in a body."
+      ],
+      weight_values: [
+        type: {:map, {:in, [:a, :b, :c, :d]}, :float},
+        default: %{},
+        doc:
+          "What each weight class is worth when ranking, 0.0 to 1.0. Postgres' defaults " <>
+            "are `%{a: 1.0, b: 0.4, c: 0.2, d: 0.1}`; override any of them, e.g. " <>
+            "`%{b: 0.9}` to bring class `:b` almost level with `:a`. Note there are four " <>
+            "classes and no more — a tsvector stores two bits of weight per lexeme — so " <>
+            "fields are assigned to classes with `weights`, and the classes are priced here."
+      ],
       language_attribute: [
         type: :atom,
         default: :language,
@@ -85,6 +103,15 @@ defmodule SearchAsh do
           "Match the last-typed token as a prefix (search-as-you-type): a query " <>
             "\"boulan\" matches \"boulangerie\". Set false for exact stemmed matching."
       ],
+      default_limit: [
+        type: :pos_integer,
+        required: false,
+        doc:
+          "Bound the results when the caller asks for no page at all. Setting it makes " <>
+            "the action paginate by default, so it returns an `Ash.Page` rather than a " <>
+            "list. Unset (the default) keeps today's behaviour — an unpaginated search " <>
+            "reads every matching row."
+      ],
       rank?: [
         type: :boolean,
         default: true,
@@ -104,6 +131,8 @@ defmodule SearchAsh do
       SearchAsh.Transformers.AddSearchAction,
       SearchAsh.Transformers.AddSearchIndex
     ]
+
+  require Ash.Query
 
   alias SearchAsh.Source.{Document, Index}
 
@@ -138,12 +167,17 @@ defmodule SearchAsh do
   @spec reindex(module(), keyword()) :: :ok
   def reindex(source_resource, opts \\ []) do
     tenant = opts[:tenant]
+    domain = opts[:domain]
 
+    # Chunked so a `load`ed relationship (`extra_text`) costs one query per chunk of
+    # records, not one per record — `Ash.stream!` already reads in batches anyway.
     source_resource
     |> Ash.stream!(opts)
-    |> Stream.each(fn record ->
-      {_result, notifications} = Index.upsert(source_resource, record, tenant)
-      Ash.Notifier.notify(notifications)
+    |> Stream.chunk_every(100)
+    |> Stream.each(fn records ->
+      source_resource
+      |> Index.upsert_all(records, tenant, domain)
+      |> Enum.each(fn {_result, notifications} -> Ash.Notifier.notify(notifications) end)
     end)
     |> Stream.run()
   end
@@ -239,7 +273,7 @@ defmodule SearchAsh do
           Index.apply_destroy(source_resource, source_id, tenant)
 
         {:ok, record} ->
-          upsert_read_record!(source_resource, record, tenant)
+          upsert_read_record!(source_resource, record, tenant, opts[:domain])
 
         # Never let a read error fall into the "gone" branch: that would delete an index row
         # on the strength of a timeout.
@@ -342,13 +376,85 @@ defmodule SearchAsh do
     end)
   end
 
+  @doc """
+  Count the `:global_search` matches of a `SearchAsh.GlobalIndex`, per `source_type` —
+  the numbers a results page shows on its tabs:
+
+      SearchAsh.counts_by_type(MyApp.Search.Document, "tomates", actor: user, tenant: org)
+      #=> %{"facture" => 12, "produit" => 3}
+
+  Runs the index's `:global_search` action, so everything composes as usual: the same
+  matching (including `fuzzy?`), archived rows hidden, and the **index's policies
+  applied** to the given `:actor` — a user only gets counts for what they may find.
+
+  A blank `term` counts everything, per type — the numbers for a results page before
+  the user types.
+
+  ## Options
+
+    * `:types` — the types to count (atoms or strings). `nil` or `[]` mean "not
+      specified" (same convention as `:global_search`'s `types` argument): the types
+      actually present in the matching rows are counted, found with one extra
+      `distinct` read.
+    * `:language`, `:include_archived?` — forwarded to `:global_search`'s arguments.
+    * `:actor`, `:authorize?`, `:tenant`, `:domain` — as for any read.
+
+  ## Cost
+
+  One `Ash.count` **per type** (plus the `distinct` read when `:types` is omitted) —
+  N small GIN-indexed counts, no hidden group-by. Fine for the handful of types a
+  global index typically holds; pass `:types` to count only the tabs you display.
+  """
+  @spec counts_by_type(module(), String.t() | nil, keyword()) ::
+          %{String.t() => non_neg_integer()}
+  def counts_by_type(index, term, opts \\ []) do
+    {arg_opts, query_opts} = Keyword.split(opts, [:types, :language, :include_archived?])
+
+    args =
+      arg_opts
+      |> Keyword.take([:language, :include_archived?])
+      |> Map.new()
+      |> Map.put(:query, term)
+
+    base =
+      index
+      |> Ash.Query.for_read(SearchAsh.GlobalIndex.Info.action(index), args, query_opts)
+      # Counting needs no order and no rank — and a sort on a calculation would only
+      # get in the aggregate's way. (`:load` also clears the loaded calculations.)
+      |> Ash.Query.unset([:sort, :load])
+      # And no page: an index with `default_limit` paginates by default, which would both
+      # cap the distinct-type read and hand it an `Ash.Page` to enumerate.
+      |> Ash.Query.page(false)
+
+    arg_opts
+    |> Keyword.get(:types)
+    |> types_to_count(base)
+    |> Map.new(fn type ->
+      {type, base |> Ash.Query.filter(source_type == ^type) |> Ash.count!()}
+    end)
+  end
+
+  # `[]` means "not specified", exactly as it does for `:global_search`'s `types`
+  # argument — an empty tab multi-select must produce the full badge set, not `%{}`.
+  defp types_to_count([_ | _] = types, _base), do: Enum.map(types, &to_string/1)
+  defp types_to_count(_none, base), do: present_types(base)
+
+  # The types that actually have matching rows, when the caller didn't name any.
+  defp present_types(base) do
+    base
+    |> Ash.Query.distinct(:source_type)
+    |> Ash.Query.select([:source_type])
+    |> Ash.read!()
+    |> Enum.map(& &1.source_type)
+  end
+
   # `Index.upsert/3` answers `:noop` for a partially-loaded record, which is right on the
   # change path (a narrowed `select` on an update is real). Here the record comes from a full
   # `Ash.get`, so `:noop` can only mean a searchable field is `select_by_default? false` — in
   # which case the sync change cannot index this resource either. Say so, rather than
   # returning a `:noop` that reads as "reconciled, nothing to do" while the index stays stale.
-  defp upsert_read_record!(resource, record, tenant) do
-    case Index.upsert(resource, record, tenant) do
+  defp upsert_read_record!(resource, record, tenant, domain) do
+    case Index.upsert(resource, record, tenant, domain) do
       {:noop, _notifications} -> raise ArgumentError, partial_record_message(resource)
       upserted -> upserted
     end

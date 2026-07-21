@@ -28,8 +28,11 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
     |> add_attribute(search_text, :string, allow_nil?: true, public?: true)
     |> add_attribute(:archived, :boolean, allow_nil?: false, public?: true, default: false)
     |> add_attribute(:label, :string, public?: true)
+    |> add_attribute(:label_normalized, :string, allow_nil?: true, public?: true)
+    |> add_attribute(:excerpt, :string, allow_nil?: true, public?: true)
     |> add_identity()
     |> add_gin_index(search_text)
+    |> maybe_add_trigram_index()
     |> then(&{:ok, &1})
   end
 
@@ -90,13 +93,36 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddSchema do
       table ->
         {:ok, index} =
           Transformer.build_entity(AshPostgres.DataLayer, [:postgres, :custom_indexes], :index,
-            fields: ["(to_tsvector('simple', #{search_text}))"],
+            # The column holds a weighted tsvector *literal*, so the index casts rather
+            # than calling `to_tsvector` — the query side uses the identical expression.
+            fields: ["(#{search_text}::tsvector)"],
             using: "gin",
             name: "#{table}_search_idx",
             all_tenants?: true
           )
 
         Transformer.add_entity(dsl, [:postgres, :custom_indexes], index)
+    end
+  end
+
+  # Only when `fuzzy? true`: a trigram GIN index on the folded label, serving both the
+  # `%` similarity match and the `LIKE '%…%'` substring match of `:global_search`.
+  # Requires the `pg_trgm` extension (the user adds `"pg_trgm"` to their repo's
+  # `installed_extensions`) — which is exactly why this is opt-in.
+  defp maybe_add_trigram_index(dsl) do
+    with true <- Transformer.get_option(dsl, [:global_index], :fuzzy?, false),
+         table when not is_nil(table) <- Transformer.get_option(dsl, [:postgres], :table) do
+      {:ok, index} =
+        Transformer.build_entity(AshPostgres.DataLayer, [:postgres, :custom_indexes], :index,
+          fields: ["label_normalized gin_trgm_ops"],
+          using: "gin",
+          name: "#{table}_label_trgm_idx",
+          all_tenants?: true
+        )
+
+      Transformer.add_entity(dsl, [:postgres, :custom_indexes], index)
+    else
+      _ -> dsl
     end
   end
 

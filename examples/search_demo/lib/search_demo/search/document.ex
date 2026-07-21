@@ -53,6 +53,9 @@ defmodule SearchDemo.Search.Document do
 
   global_index do
     default_language :fr
+    # Typo tolerance on the label (duont → Dupont, 12 → BL-…-0012), served by a trigram
+    # GIN index. Needs "pg_trgm" in the repo's installed_extensions.
+    fuzzy? true
   end
 
   policies do
@@ -76,5 +79,14 @@ defmodule SearchDemo.Search.Document do
   attributes do
     uuid_primary_key :id
     attribute :org_id, :string, allow_nil?: false, public?: true
+
+    # Filled by sources' `index_attribute`. Declared here because a source cannot add a
+    # column to a resource it does not own — this is the index's "mapping".
+    attribute :document_date, :date, public?: true
+
+    # A *keyword* column: stored raw, never analysed — for exact filtering and facets.
+    # The source types it as an atom; the index keeps a flat string, which is all an
+    # exact filter needs.
+    attribute :statut, :string, public?: true
   end
 end

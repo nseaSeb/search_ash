@@ -28,7 +28,7 @@ CREATE TABLE test_articles (
 
 Ecto.Adapters.SQL.query!(Repo, """
 CREATE INDEX test_articles_search_idx
-ON test_articles USING GIN (to_tsvector('simple', search_text))
+ON test_articles USING GIN ((search_text::tsvector))
 """)
 
 # Unified index (SearchAsh.GlobalIndex) + a source resource (SearchAsh.Source).
@@ -45,13 +45,18 @@ CREATE TABLE test_search_documents (
   search_text text,
   archived boolean NOT NULL DEFAULT false,
   label text,
+  label_normalized text,
+  excerpt text,
+  document_date date,
+  client_ref text,
+  line_count integer,
   UNIQUE (org_id, source_type, source_id)
 )
 """)
 
 Ecto.Adapters.SQL.query!(Repo, """
 CREATE INDEX test_search_documents_search_idx
-ON test_search_documents USING GIN (to_tsvector('simple', search_text))
+ON test_search_documents USING GIN ((search_text::tsvector))
 """)
 
 Ecto.Adapters.SQL.query!(Repo, """
@@ -60,6 +65,7 @@ CREATE TABLE test_products (
   org_id text NOT NULL,
   name text,
   sku text,
+  ref_interne text,
   discontinued boolean NOT NULL DEFAULT false,
   language text NOT NULL
 )
@@ -81,13 +87,15 @@ CREATE TABLE test_secured_documents (
   search_text text,
   archived boolean NOT NULL DEFAULT false,
   label text,
+  label_normalized text,
+  excerpt text,
   UNIQUE (org_id, source_type, source_id)
 )
 """)
 
 Ecto.Adapters.SQL.query!(Repo, """
 CREATE INDEX test_secured_documents_search_idx
-ON test_secured_documents USING GIN (to_tsvector('simple', search_text))
+ON test_secured_documents USING GIN ((search_text::tsvector))
 """)
 
 Ecto.Adapters.SQL.query!(Repo, """
@@ -125,6 +133,7 @@ CREATE TABLE test_invoices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id text NOT NULL,
   number text,
+  date_facture date,
   deleted_at timestamptz,
   language text NOT NULL
 )
@@ -155,6 +164,73 @@ CREATE TABLE test_tickets (
   org_id text NOT NULL,
   subject text,
   body text
+)
+""")
+
+# A fuzzy (`fuzzy? true`) index and its source, on their own tables: trigram matching
+# needs pg_trgm and its own GIN index, and enabling fuzzy on the main index would change
+# what every other global-search test matches. Deliberately NOT multitenant — also
+# covers the non-multitenant index path.
+Ecto.Adapters.SQL.query!(Repo, "CREATE EXTENSION IF NOT EXISTS pg_trgm", [])
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_fuzzy_documents", [])
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_contacts", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_fuzzy_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type text NOT NULL,
+  source_id text NOT NULL,
+  language text NOT NULL,
+  search_text text,
+  archived boolean NOT NULL DEFAULT false,
+  label text,
+  label_normalized text,
+  excerpt text,
+  UNIQUE (source_type, source_id)
+)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE INDEX test_fuzzy_documents_search_idx
+ON test_fuzzy_documents USING GIN ((search_text::tsvector))
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE INDEX test_fuzzy_documents_label_trgm_idx
+ON test_fuzzy_documents USING GIN (label_normalized gin_trgm_ops)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text,
+  ref text,
+  language text NOT NULL
+)
+""")
+
+# An order + its lines, for `load` + `extra_text` (+ `excerpt_length`): the searchable
+# text of an order includes the descriptions of its lines.
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_orders", [])
+Ecto.Adapters.SQL.query!(Repo, "DROP TABLE IF EXISTS test_order_lines", [])
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_orders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  number text,
+  date_emission date,
+  client_ref text,
+  language text NOT NULL
+)
+""")
+
+Ecto.Adapters.SQL.query!(Repo, """
+CREATE TABLE test_order_lines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id text NOT NULL,
+  order_id uuid NOT NULL,
+  description text
 )
 """)
 

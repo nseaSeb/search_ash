@@ -58,5 +58,25 @@ defmodule SearchAsh.Test.Domain do
     resource SearchAsh.Test.OffsetPage do
       define(:create_offset_page, action: :create)
     end
+
+    resource SearchAsh.Test.FuzzyDocument do
+      define(:fuzzy_search, action: :global_search, args: [:query, :language])
+    end
+
+    resource SearchAsh.Test.Contact do
+      define(:create_contact, action: :create)
+      define(:update_contact, action: :update)
+    end
+
+    resource SearchAsh.Test.Order do
+      define(:create_order, action: :create)
+      define(:update_order, action: :update)
+      define(:destroy_order, action: :destroy)
+    end
+
+    resource SearchAsh.Test.OrderLine do
+      define(:create_order_line, action: :create)
+      define(:update_order_line, action: :update)
+    end
   end
 end

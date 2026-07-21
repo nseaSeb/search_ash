@@ -19,9 +19,11 @@ defmodule SearchDemo.Sales.Client do
 
   searchable do
     index SearchDemo.Search.Document
-    source_type(:client)
+    source_type :client
     fields [:nom, :email, :notes]
-    label_field(:nom)
+    label_field :nom
+    weights %{nom: :a}
+    index_attribute :document_date, &DateTime.to_date(&1.inserted_at)
   end
 
   actions do

@@ -6,7 +6,7 @@
 per-resource (`search do … end`) and **global cross-entity** search (a unified index).
 No hand-written migrations, changes or SQL.
 
-Part of the [search_ash monorepo](../); built on [`search_core`](../search_core), which
+Built on [`search_core`](https://hex.pm/packages/search_core), which
 stems in pure Elixir via [`text_stemmer`](https://hex.pm/packages/text_stemmer) — 33
 languages, no NIF, nothing to install beyond the Hex packages.
 
@@ -48,7 +48,7 @@ That block generates, at compile time:
 - a `:search_text` string attribute holding the stemmed tokens;
 - a global change that keeps `:search_text` in sync on create/update (stemming each
   row in its own language via `SearchCore`);
-- a GIN expression index `to_tsvector('simple', search_text)` — emitted into your
+- a GIN expression index on `search_text::tsvector` — emitted into your
   migrations and tracked in the resource snapshot, so
   `mix ash_postgres.generate_migrations` **round-trips it cleanly** (re-running
   detects no changes);
@@ -140,6 +140,11 @@ the unified-index extensions:
   | `language` | — | One language for every row; mutually exclusive with `language_attribute` |
   | `language_attribute` | `:language` | Attribute holding each row's language |
   | `label_field` | — | Attribute used as the human-readable label stored in the index |
+  | `weights` | `%{}` | Per-field rank weights (`%{numero: :a}`); unlisted fields weigh `:d` |
+  | `index_attribute` | — | Fill a typed index column from the record, to filter and sort on (repeatable) |
+  | `load` | — | Ash load statement applied before building the document (for `extra_text`) |
+  | `extra_text` | — | `record -> text` appended to the searchable text, with its own `weight:` (repeatable; mind the [staleness contract](documentation/architecture.md#reconciliation--writes-the-sync-never-saw)) |
+  | `excerpt_length` | — | When set, store the first N chars of the raw text in the index's `excerpt` column |
   | `archived` | — | Attribute name (truthiness) or `record -> boolean` deriving the index's `archived` flag |
   | `on_destroy` | `:remove` | `:remove` (hard delete) or `:archive` (keep, flagged) |
 
@@ -161,8 +166,22 @@ Then one query, ranked, tenant-isolated:
 
 ```elixir
 MyApp.Search.global_search!("dupont", :fr, tenant: "org_42")
-# => [%{source_type: "bon_de_commande", source_id: "…", archived: false, search_rank: 0.9}, …]
+# => [%{source_type: "bon_de_commande", source_id: "…", label: "BL-2024-0012", …}, …]
 ```
+
+Results rank **label** matches first — exact, then starts-with, then contains, then a
+body-only match — and `ts_rank` within each tier. So the client *named* "Dupont" beats an
+invoice that merely mentions one.
+
+From there a results page needs pagination with a total (`page: [limit: 20, count: true]`),
+tab badges (`SearchAsh.counts_by_type/3`), range filters and sorting on typed columns
+(`index_attribute`), per-field ranking (`weights`), typo tolerance (`fuzzy?`), text pulled
+from related records (`load` + `extra_text`), and a highlighted excerpt (`excerpt_length`
+plus `SearchCore.highlight/4`).
+
+**→ [Building a global search](documentation/global-search.md) walks all of it, in order,
+from nothing to a working page** — including the two decisions that are easy to get wrong:
+which attribute to use as your `label_field`, and where to draw the authorization line.
 
 **Backfill existing data** with `SearchAsh.reindex/2` (per tenant):
 
@@ -195,7 +214,7 @@ reconcile — backfill missing rows, then sweep orphans.
 
 The index is a normal Ash resource, so admin tools (view indexed content, force a
 reindex) are just reads/actions on it. `global_index` options: `default_language`,
-`search_text_attribute`, `action`. Archived rows are hidden by default (`include_archived?: true` to include them).
+`search_text_attribute`, `action`, `fuzzy?`. Archived rows are hidden by default (`include_archived?: true` to include them).
 
 ## Options (`search do … end`)
 
@@ -211,7 +230,7 @@ reindex) are just reads/actions on it. `global_index` options: `default_language
 
 ## Verify end-to-end
 
-See [`examples/search_demo`](examples/search_demo) for a runnable multi-tenant demo
+See [`examples/search_demo`](https://github.com/nseaSeb/search_ash/tree/main/examples/search_demo) for a runnable multi-tenant demo
 against real Postgres — per-resource and global search, a GreenAsh console, and a
 Postgres-backed test suite.
 
@@ -228,7 +247,11 @@ Postgres-backed test suite.
 - An **unsupported/blank `language`** argument falls back to `default_language` rather than
   raising.
 - The search matches the last token as a **prefix** (`prefix?`, on) and treats a **blank
-  query as "no filter"** so it composes with list UIs.
+  query as "no filter"** so it composes with list UIs. A *non-blank* query whose tokens
+  are all eliminated (stopwords, too short — `"de"`) matches **nothing** (since 0.4.0;
+  it used to list everything, which was a bug).
+- Both generated actions **paginate** when asked (`page: [limit: …]`, offset or keyset,
+  countable) and stay plain lists when not.
 
 ## Production notes & limitations
 
@@ -319,19 +342,22 @@ Know these before adopting — they're deliberate trade-offs, not surprises:
 - **Index creation is not `CONCURRENTLY`.** The generated GIN index is emitted as a plain
   `CREATE INDEX` migration; on a large existing table, plan the migration accordingly.
 - **Stemming is pure Elixir, at ~11µs/word.** Invisible on the query path, but a write
-  that stems a very large document spends tens of ms of CPU inside the transaction. If
-  you bulk-index large corpora and want ~0.5µs/word, the [`stemmers`](../stemmers) Rust
-  NIF is published and produces identical output.
+  that stems a very large document spends tens of ms of CPU inside the transaction — worth
+  knowing if you index very large documents. The stemmer is not swappable: `search_core`
+  calls `text_stemmer` directly.
 
 ## Status
 
 MVP, `:pre_stemmed` strategy — tested end-to-end against Postgres (`mix test`).
 
-Roadmap, roughly in order of how often it bites:
+See [the roadmap](documentation/roadmap.md) for what is deferred and why — including the
+shape synonym support would take, and what was **refused** (BM25 ranking, and copying
+authorization data into the index) with the reasoning. Roughly in order of how often it
+bites:
 
+- **Synonyms** — `BL` finds `bon de livraison`, expanded at query time so editing the map
+  needs no reindex.
+- **Facets** — counting for side filters, generalizing `SearchAsh.counts_by_type/3`.
 - **Async indexing** — an `indexing_strategy :sync | :notify | :manual` option on
-  `SearchAsh.Source`, with no hard Oban dependency (`:notify` emits an Ash notification,
-  `:manual` lets you drive a durable job).
-- **Cross-language search** — one query probing several languages at once.
-- A `:native` per-row-`regconfig` strategy (Postgres-supported languages only), and
-  weighted fields (`setweight`).
+  `SearchAsh.Source`, with no hard Oban dependency.
+- **Cross-language search**, and a `:native` per-row-`regconfig` strategy.

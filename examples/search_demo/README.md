@@ -2,7 +2,7 @@
 
 A small Ash + AshPostgres application that demonstrates, end to end, the two ways
 [`search_ash`](../..) brings full-text search to Ash — plus a terminal console to poke
-at it live. It is the integration test-bed for the extension (13 Postgres-backed tests
+at it live. It is the integration test-bed for the extension (26 Postgres-backed tests
 live in `test/`).
 
 ## The domain
@@ -13,7 +13,9 @@ A tiny multi-tenant business app. Every resource is scoped by an `org_id` tenant
 |---|---|---|
 | `SearchDemo.Post` | `SearchDemo.Blog` | Blog posts — demonstrates the **search_ash extension** directly on a resource |
 | `SearchDemo.Sales.{Facture,Client,Produit}` | `SearchDemo.Sales` | Business objects — the *sources* fed into the global index |
+| `SearchDemo.Sales.Ligne` | `SearchDemo.Sales` | Facture lines — *not* a source; their text reaches the index through the facture's `extra_text` |
 | `SearchDemo.Search.Document` | `SearchDemo.Search` | The **unified global search index** (Option B) |
+| `SearchDemo.Accounts.User` | `SearchDemo.Accounts` | Roles the index authorizes against (`:actor user <id>` in the console) |
 
 ## What it shows
 
@@ -63,11 +65,14 @@ mix run global_demo.exs   # global search: ranking + tenant isolation + delete-f
 ```
 
 Each prints `[OK]` checks and an `EXPLAIN` plan showing the GIN index + `org_id` filter.
+`global_demo.exs` also covers the 0.4.0 results-page features — label-tier ranking,
+typo tolerance, text pulled from facture *lignes*, tab counts and pagination — and the
+index's own policies (an actor is required: with none, the search returns nothing).
 
 ### Tests
 
 ```sh
-mix test   # 13 Postgres-backed tests (auto-creates an isolated test DB)
+mix test   # 26 Postgres-backed tests (auto-creates an isolated test DB)
 ```
 
 They lock every behaviour found while building this: multilingual + tenant-scoped

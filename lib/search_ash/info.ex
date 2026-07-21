@@ -5,6 +5,19 @@ defmodule SearchAsh.Info do
   @doc "Attributes indexed for search."
   def fields(resource), do: Extension.get_opt(resource, [:search], :fields, [])
 
+  @doc "Per-field rank weights (`%{field => :a | :b | :c | :d}`); unlisted fields are `:d`."
+  def weights(resource), do: Extension.get_opt(resource, [:search], :weights, %{})
+
+  @doc "The `{text, weight}` segments for `record`, in `fields` order."
+  def segments(resource, values) do
+    weights = weights(resource)
+
+    resource
+    |> fields()
+    |> Enum.zip(values)
+    |> Enum.map(fn {field, value} -> {to_string(value || ""), Map.get(weights, field, :d)} end)
+  end
+
   @doc "Attribute holding each row's language."
   def language_attribute(resource),
     do: Extension.get_opt(resource, [:search], :language_attribute, :language)

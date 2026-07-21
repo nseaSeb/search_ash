@@ -19,6 +19,8 @@ defmodule SearchAsh.Test.Article do
   search do
     fields [:title, :body]
     language_attribute :language
+    # A hit in the title outranks the same hit in the body.
+    weights %{title: :a}
   end
 
   actions do

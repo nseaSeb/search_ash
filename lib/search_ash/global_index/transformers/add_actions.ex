@@ -13,7 +13,30 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
     SearchAsh.GlobalIndex.Transformers.AddActions
   ]
 
-  @accept [:source_type, :source_id, :language, :search_text, :archived, :label]
+  # The upsert accepts every public, writable, non-primary-key attribute of the index —
+  # computed rather than listed, so an attribute the user adds for `index_attribute` is
+  # accepted without touching this file, and a column added here can never be forgotten
+  # in the accept list (a class of bug this extension has already shipped once).
+  #
+  # The attribute-multitenancy column is excluded: it is set from the `tenant:` option, and
+  # accepting it would make Ash demand it in the attrs map (`allow_nil?: false`) on every
+  # index write.
+  defp accept(dsl) do
+    excluded = tenant_attribute(dsl)
+
+    dsl
+    |> Transformer.get_entities([:attributes])
+    |> Enum.reject(&(&1.primary_key? or not &1.public? or not &1.writable?))
+    |> Enum.map(& &1.name)
+    |> Enum.reject(&(&1 in excluded))
+  end
+
+  defp tenant_attribute(dsl) do
+    case Transformer.get_option(dsl, [:multitenancy], :strategy) do
+      :attribute -> [Transformer.get_option(dsl, [:multitenancy], :attribute)]
+      _ -> []
+    end
+  end
 
   @impl true
   def transform(dsl) do
@@ -27,6 +50,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
     |> ensure_default_action(:destroy, [])
     |> add_upsert_action()
     |> add_search_rank(search_text)
+    |> add_label_match_tier()
     |> add_global_search_action(action_name)
     |> then(&{:ok, &1})
   end
@@ -56,7 +80,7 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
     else
       {:ok, action} =
         Ash.Resource.Builder.build_action(:create, :upsert,
-          accept: @accept,
+          accept: accept(dsl),
           upsert?: true,
           upsert_identity: :unique_source
         )
@@ -69,10 +93,18 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
     if calc_defined?(dsl, :search_rank) do
       dsl
     else
+      # The weight array prices the four classes `weights` assigns fields to. Passed as a
+      # bound parameter rather than inlined, so `weight_values` needs no string building.
+      weight_values =
+        dsl
+        |> Transformer.get_option([:global_index], :weight_values, %{})
+        |> SearchAsh.Weights.to_array()
+
       calc_expr =
         Ash.Expr.expr(
           fragment(
-            "ts_rank(to_tsvector('simple', ?), to_tsquery('simple', ?))",
+            "ts_rank(?::float4[], ?::tsvector, to_tsquery('simple', ?))",
+            ^weight_values,
             ^ref(search_text),
             ^arg(:tsquery)
           )
@@ -83,6 +115,40 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
 
       {:ok, calc} =
         Ash.Resource.Builder.build_calculation(:search_rank, :float, calc_expr,
+          arguments: [argument]
+        )
+
+      Transformer.add_entity(dsl, [:calculations], calc)
+    end
+  end
+
+  # How the *label* relates to the folded query term: 0 exact, 1 starts-with, 2 contains,
+  # 3 anything else (body-only match — including rows indexed before 0.4.0, whose
+  # `label_normalized` is NULL: every comparison is NULL there, so they fall to ELSE).
+  # `strpos` rather than LIKE: plain substring semantics, no pattern metacharacters to
+  # escape — and as a sort key it runs on already-filtered rows, so it needs no index.
+  defp add_label_match_tier(dsl) do
+    if calc_defined?(dsl, :label_match_tier) do
+      dsl
+    else
+      calc_expr =
+        Ash.Expr.expr(
+          fragment(
+            "CASE WHEN ? = ? THEN 0 WHEN strpos(?, ?) = 1 THEN 1 WHEN strpos(?, ?) > 0 THEN 2 ELSE 3 END",
+            ^ref(:label_normalized),
+            ^arg(:term),
+            ^ref(:label_normalized),
+            ^arg(:term),
+            ^ref(:label_normalized),
+            ^arg(:term)
+          )
+        )
+
+      {:ok, argument} =
+        Ash.Resource.Builder.build_calculation_argument(:term, :string, allow_nil?: false)
+
+      {:ok, calc} =
+        Ash.Resource.Builder.build_calculation(:label_match_tier, :integer, calc_expr,
           arguments: [argument]
         )
 
@@ -106,21 +172,50 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
           default: false
         )
 
+      # `nil` and `[]` both mean "no type filter" — an empty multi-select in a UI must
+      # not silently turn into `source_type in []` (zero results).
+      #
+      # `{:array, :string}`, NOT `{:array, :atom}`: Ash's string type casts atoms via
+      # `to_string`, so both `[:facture]` and `["facture"]` work — whereas the atom type
+      # casts strings with `String.to_existing_atom`, which raises for a `source_type`
+      # that was declared as a string in the DSL (its atom never exists) the moment a
+      # form submits it.
+      {:ok, types_arg} =
+        Ash.Resource.Builder.build_action_argument(:types, {:array, :string}, allow_nil?: true)
+
       {:ok, preparation} =
         Ash.Resource.Builder.build_preparation(
           SearchAsh.GlobalIndex.Preparations.GlobalSearch,
           []
         )
 
+      {:ok, pagination} = Ash.Resource.Builder.build_pagination(pagination_opts(dsl))
+
       {:ok, action} =
         Ash.Resource.Builder.build_action(:read, action_name,
-          arguments: [query_arg, language_arg, include_archived_arg],
-          preparations: [preparation]
+          arguments: [query_arg, language_arg, include_archived_arg, types_arg],
+          preparations: [preparation],
+          pagination: pagination
         )
 
       Transformer.add_entity(dsl, [:actions], action)
     end
   end
+
+  # Offset and keyset, never required — an unpaginated call still returns a plain list.
+  # `default_limit` flips `paginate_by_default?` with it: asking for a default bound only
+  # means something if a caller who passes no page gets it, and that is what makes the
+  # action return a page rather than reading every matching row.
+  defp pagination_opts(dsl) do
+    default_limit = Transformer.get_option(dsl, [:global_index], :default_limit)
+
+    [offset?: true, keyset?: true, countable: true, required?: false]
+    |> put_unless_nil(:default_limit, default_limit)
+    |> Keyword.put(:paginate_by_default?, not is_nil(default_limit))
+  end
+
+  defp put_unless_nil(opts, _key, nil), do: opts
+  defp put_unless_nil(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp action_defined?(dsl, name) do
     dsl |> Transformer.get_entities([:actions]) |> Enum.any?(&(&1.name == name))
@@ -132,4 +227,10 @@ defmodule SearchAsh.GlobalIndex.Transformers.AddActions do
 
   @impl true
   def before?(t), do: t not in @siblings
+
+  # `accept/1` reads the index's attributes, which `AddSchema` is what adds — so the
+  # order between the two siblings is load-bearing, not incidental.
+  @impl true
+  def after?(SearchAsh.GlobalIndex.Transformers.AddSchema), do: true
+  def after?(_), do: false
 end

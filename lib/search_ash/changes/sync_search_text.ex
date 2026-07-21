@@ -46,12 +46,10 @@ defmodule SearchAsh.Changes.SyncSearchText do
         changeset
 
       true ->
-        text = values |> Enum.map(&to_string(&1 || "")) |> Enum.join(" ")
-
         Ash.Changeset.force_change_attribute(
           changeset,
           search_text_attribute,
-          SearchCore.searchable_text(text, language)
+          SearchCore.weighted(SearchAsh.Info.segments(changeset.resource, values), language)
         )
     end
   end

@@ -29,19 +29,69 @@ defmodule SearchAsh.Source.Index do
 
   Returns `{:noop, []}` for a partially-loaded record (narrowed `select`), which is left
   as-is rather than indexed from incomplete data.
-  """
-  @spec upsert(module(), struct(), term()) :: {result(), list()}
-  def upsert(resource, record, tenant) do
-    if Document.loaded?(resource, record) do
-      {_indexed, notifications} =
-        resource
-        |> Info.index()
-        |> Ash.Changeset.for_create(:upsert, Document.to_attrs(resource, record), tenant: tenant)
-        |> Ash.create!(authorize?: false, return_notifications?: true)
 
-      {:upserted, notifications}
-    else
-      {:noop, []}
+  `domain` is only needed by the resource's `load` statement, and only when the source
+  resource has no statically configured domain — same contract as `Ash.load!/3`.
+  """
+  @spec upsert(module(), struct(), term(), module() | nil) :: {result(), list()}
+  def upsert(resource, record, tenant, domain \\ nil) do
+    [result] = upsert_all(resource, [record], tenant, domain)
+    result
+  end
+
+  @doc """
+  Upsert many records' documents into their index — `upsert/4` semantics per record
+  (one `{result, notifications}` per input, in order), but the resource's `load`
+  statement runs **once for the whole batch** instead of once per record. The bulk
+  sync path and `SearchAsh.reindex/2` go through here so a `load [:lines]` source
+  costs one relationship query per batch, not N.
+  """
+  @spec upsert_all(module(), [struct()], term(), module() | nil) :: [{result(), list()}]
+  def upsert_all(resource, records, tenant, domain \\ nil) do
+    # `loaded?` first: a partially-loaded record is a `:noop` and must not pay for the
+    # relationship load it would only discard.
+    loaded =
+      resource
+      |> apply_load(Enum.filter(records, &Document.loaded?(resource, &1)), tenant, domain)
+      |> Map.new(&{Document.source_id(resource, &1), &1})
+
+    # Reassembled by `source_id` rather than by position: `Ash.load!` happens to preserve
+    # order today, but pairing a record with someone else's loaded relations would corrupt
+    # every document silently, and that is not a risk worth taking on an ordering promise
+    # nobody documented. A record that was skipped is simply absent from the map.
+    Enum.map(records, fn record ->
+      case Map.fetch(loaded, Document.source_id(resource, record)) do
+        {:ok, record} -> create_document(resource, record, tenant)
+        :error -> {:noop, []}
+      end
+    end)
+  end
+
+  defp create_document(resource, record, tenant) do
+    {_indexed, notifications} =
+      resource
+      |> Info.index()
+      |> Ash.Changeset.for_create(:upsert, Document.to_attrs(resource, record), tenant: tenant)
+      |> Ash.create!(authorize?: false, return_notifications?: true)
+
+    {:upserted, notifications}
+  end
+
+  # Apply the resource's `load` statement so `extra_text` can read relations. This is the
+  # single choke point every indexing path goes through (sync, bulk after_batch, reindex,
+  # reindex_one), so nothing needs to remember to load. `authorize?: false` like every
+  # other internal read: the source write was already authorized.
+  defp apply_load(_resource, [], _tenant, _domain), do: []
+
+  defp apply_load(resource, records, tenant, domain) do
+    case Info.load(resource) do
+      nil ->
+        records
+
+      load ->
+        opts = [authorize?: false, tenant: tenant]
+        opts = if domain, do: Keyword.put(opts, :domain, domain), else: opts
+        Ash.load!(records, load, opts)
     end
   end
 
@@ -91,11 +141,14 @@ defmodule SearchAsh.Source.Index do
         {:noop, []}
 
       rows ->
+        # The accept list is static; resolve it once for the sweep, not per row.
+        accept = index |> Ash.Resource.Info.action(:upsert) |> Map.fetch!(:accept)
+
         notifications =
           Enum.flat_map(rows, fn row ->
             {_indexed, notifications} =
               index
-              |> Ash.Changeset.for_create(:upsert, archived_attrs(row), tenant: tenant)
+              |> Ash.Changeset.for_create(:upsert, archived_attrs(accept, row), tenant: tenant)
               |> Ash.create!(authorize?: false, return_notifications?: true)
 
             notifications
@@ -141,14 +194,17 @@ defmodule SearchAsh.Source.Index do
     |> Ash.read!(tenant: tenant, authorize?: false)
   end
 
-  defp archived_attrs(row) do
-    %{
-      source_type: row.source_type,
-      source_id: row.source_id,
-      language: row.language,
-      search_text: row.search_text,
-      label: row.label,
-      archived: true
-    }
+  # Re-upsert the row as it stands, flipping only `archived`. The source may be gone (the
+  # `reindex_one/3` path), so the row itself is the only truth.
+  #
+  # Built from what the upsert accepts rather than from a hand-written column list. Note
+  # this is a simplification, NOT a bug fix: `ON CONFLICT DO UPDATE SET` only touches the
+  # columns present in the changeset, so a shorter list would leave the others intact
+  # rather than blanking them (verified). Deriving the list just removes a place that has
+  # to be remembered whenever a column is added.
+  defp archived_attrs(accept, row) do
+    accept
+    |> Enum.reduce(%{}, &Map.put(&2, &1, Map.get(row, &1)))
+    |> Map.put(:archived, true)
   end
 end

@@ -22,6 +22,13 @@ defmodule SearchAsh.Test.Product do
     fields [:name, :sku]
     language_attribute :language
     label_field :name
+    # The reference weighs most, the name next; anything unlisted stays :d.
+    weights %{sku: :a, name: :b}
+    # Deliberately on an attribute that is NOT in `fields` and is NOT the label: the only
+    # thing that can trigger a re-index on a change to it is `guarded_attributes` picking
+    # up index_attribute sources. Product has no `extra_text`/`load` and an
+    # attribute-driven `archived`, so it is the one fixture that reaches that code.
+    index_attribute :client_ref, :ref_interne
     archived :discontinued
   end
 
@@ -29,12 +36,12 @@ defmodule SearchAsh.Test.Product do
     defaults [:read]
 
     create :create do
-      accept [:name, :sku, :language, :discontinued]
+      accept [:name, :sku, :language, :discontinued, :ref_interne]
     end
 
     # NB: no `require_atomic? false` here — SearchAsh.Source sets it automatically.
     update :update do
-      accept [:name, :sku, :language, :discontinued]
+      accept [:name, :sku, :language, :discontinued, :ref_interne]
     end
 
     destroy :destroy do
@@ -47,6 +54,7 @@ defmodule SearchAsh.Test.Product do
     attribute :name, :string, public?: true
     attribute :sku, :string, public?: true
     attribute :discontinued, :boolean, public?: true, default: false
+    attribute :ref_interne, :string, public?: true
 
     attribute :language, :atom,
       allow_nil?: false,

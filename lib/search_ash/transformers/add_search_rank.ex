@@ -36,10 +36,16 @@ defmodule SearchAsh.Transformers.AddSearchRank do
         search_text =
           Transformer.get_option(dsl, [:search], :search_text_attribute) || :search_text
 
+        weight_values =
+          dsl
+          |> Transformer.get_option([:search], :weight_values, %{})
+          |> SearchAsh.Weights.to_array()
+
         calc_expr =
           Ash.Expr.expr(
             fragment(
-              "ts_rank(to_tsvector('simple', ?), to_tsquery('simple', ?))",
+              "ts_rank(?::float4[], ?::tsvector, to_tsquery('simple', ?))",
+              ^weight_values,
               ^ref(search_text),
               ^arg(:tsquery)
             )

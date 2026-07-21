@@ -1,5 +1,157 @@
 # Changelog
 
+## 0.4.0
+Everything a **results page** needs, then everything it needs to *filter, sort and rank* —
+driven by the first real-world integration. One release, one migration, one reindex from
+0.3.x; see [Upgrading to 0.4](documentation/upgrading-0.4.md).
+
+The API is additive and the new columns are nullable, so this is not a breaking release.
+Three things do change observably, all deliberate: a query with no usable token now
+returns nothing, results rank label matches first, and `search_text` changes storage
+format (rows keep matching without a reindex — only ranking goes flat until you run one).
+
+### Added
+
+- **Pagination on the generated actions** (`:search` and `:global_search`): offset and
+  keyset, countable, `required?: false` — existing unpaginated calls are untouched.
+  `page: [limit: 20, offset: 0, count: true]` is all a results page needs.
+- **`types` argument on `:global_search`** — restrict to entity kinds
+  (`types: [:facture]` or `["facture"]` — it accepts atoms and strings, so a form can
+  submit it directly) for tabs. `nil` and `[]` both mean "no filter", so an empty
+  multi-select never turns into zero results.
+- **`SearchAsh.counts_by_type/3`** — per-type match counts for tab badges
+  (`%{"facture" => 12, "client" => 3}`). Runs the real `:global_search` action, so the
+  index's policies compose with the given `:actor`. `types: []` means "not specified",
+  the same convention as the action's argument. One count query per type — no hidden
+  group-by.
+- **`fuzzy? true` on `global_index`** (opt-in) — typo tolerance and substring matching
+  on the label via `pg_trgm`: `duont` finds `Dupont`, `12` finds `BL-2024-0012`. One
+  trigram GIN index serves both; fuzzy-only matches rank behind full-text matches.
+  Requires `"pg_trgm"` in the repo's `installed_extensions`; without the option, no
+  extension is needed and nothing changes. A source feeding a fuzzy index without a
+  `label_field` gets a compile-time warning — its rows have no normalized label, so
+  they would silently never fuzzy-match.
+- **`load` + `extra_text` on `searchable`** — index text derived from related records
+  ("which orders mention tomatoes?"): `load [:lines]` makes the relation available,
+  `extra_text fn order -> Enum.map(order.lines, & &1.description) end` feeds it to the
+  stemmer. Applied at the single indexing choke point, so `reindex/2` and
+  `reindex_one/3` get it too — and batched on the bulk paths (bulk writes and
+  `reindex/2` load one chunk of records per query, not one query per record).
+  **Staleness contract:** a direct write to the *related* resource does not re-index
+  the parent — reconcile with `reindex_one/3` or any parent write (documented on
+  `SearchAsh.Source`).
+- **`excerpt_length` on `searchable`** — store the first N characters of the raw
+  (unstemmed) text in the index's new `excerpt` column, word-truncated and
+  `…`-suffixed, for display. Pair with `SearchCore.highlight/4` (search_core 0.3.0) to
+  mark the matching words.
+
+
+- **`index_attribute` — typed index columns you can filter and sort on.** Declare the
+  column on the index resource, and say on each source how to fill it, from an attribute
+  or from a function:
+
+  ```elixir
+  index_attribute :document_date, :date_emission
+  index_attribute :montant, &(&1.lignes |> Enum.map(fn l -> l.total end) |> Enum.sum())
+  ```
+
+  They are ordinary Ash attributes, so `Ash.Query.filter(document_date >= ^from)` and
+  `Ash.Query.sort(document_date: :desc)` work with no new API. The attribute form is
+  watched by the sync, so changing *only* that attribute still re-indexes.
+
+  **Point several sources at the same column** when it means the same thing — a facture's
+  `date_emission`, a delivery's `date_livraison`, a product's `inserted_at` all onto
+  `document_date` — so a mixed results page has one comparable axis to sort on.
+
+  Only values **derived from the record** belong here; they are rewritten on every write,
+  which is what keeps them honest. Never mirror authorization facts.
+
+- **`weights` — per-field rank weights** on both extensions:
+
+  ```elixir
+  weights %{numero: :a, client_nom: :b}   # anything unlisted stays :d
+  ```
+
+  A hit in the reference now outranks the same hit in a body.
+
+  `extra_text` is now **repeatable and weighted** too — so two things you derive can matter
+  differently, which is what lets an updated-date outweigh a created-date:
+
+  ```elixir
+  extra_text fn commande -> Enum.map(commande.lignes, & &1.designation) end
+  extra_text &date_in_words(&1.updated_at), weight: :b
+  ```
+
+- **`weight_values` — what each class is worth** when ranking, on the index (or the
+  per-resource `search` block):
+
+  ```elixir
+  weight_values %{b: 0.9}   # Postgres' defaults: a: 1.0, b: 0.4, c: 0.2, d: 0.1
+  ```
+
+  Fields are assigned to classes by the source (`weights`); classes are priced here, on
+  the index, or ranks from different entity types would not be comparable. Note there are
+  four classes and no more — a tsvector stores two bits of weight per lexeme.
+
+- **`fuzzy_threshold`** (default `0.35`) — how similar a label must be to count as a fuzzy
+  match. The default is measured, not guessed: a real typo (`duont`/`dupont`) scores 0.44
+  while two look-alike references (`bl-2024-0012`/`fa-2024-0113`) score 0.30, so `0.35`
+  separates them and an exact reference search stops dragging its neighbour back. Lowering
+  it below the database's own `pg_trgm.similarity_threshold` has no effect — see the
+  `SearchAsh.GlobalIndex` docs.
+
+- **`default_limit`** on both extensions — bound the results when the caller asks for no
+  page at all. Unset by default (today's behaviour: an unpaginated search reads every
+  matching row). Setting it makes the action paginate by default, so it returns an
+  `Ash.Page` rather than a list.
+
+### Changed
+
+- **`:global_search` ranks label matches first.** New composite order: exact label >
+  label starts-with > label contains > body-only match (`label_match_tier`, exposed on
+  results), then `ts_rank`, then primary key. Backed by a new `label_normalized` column
+  holding `SearchCore.normalize/1` of the label (trim + downcase + accents stripped —
+  `maraicher` meets `Maraîcher`); the query term goes through the *same function*, so
+  the two sides cannot drift. Rows indexed before 0.4.0 rank as body-only until
+  reindexed; nothing breaks.
+
+
+- **`search_text` now stores a weighted tsvector literal** (`'cheval':1A 'foin':2`) rather
+  than plain stemmed text, and every SQL site casts it (`search_text::tsvector`) instead of
+  calling `to_tsvector('simple', …)` — the GIN index, the filter and `ts_rank` alike. This
+  is what makes `weights` possible. Rows written by 0.4.0 still match after the migration;
+  they simply rank flat until reindexed.
+- The generated `:upsert` action now accepts **every public writable attribute** of the
+  index rather than a fixed list, so a column you add for `index_attribute` is accepted
+  without the extension having to know about it.
+
+### Fixed
+
+- **A query with no usable token returned the entire base.** `"de"` (all stopwords) or
+  `"b"` (below `min_length`) produced an empty tsquery, which `:search` and
+  `:global_search` treated as "no filter" — silently listing everything. Such a term now
+  matches **zero rows**. A blank/absent query still lists all (the documented list-UI
+  behaviour); only a non-blank, tokenless one changed.
+
+
+- **A very long token no longer fails the write.** Postgres refuses a lexeme over 2046
+  bytes: `to_tsvector` only warns and skips one, but a tsvector *literal* carrying it
+  fails to parse — and that parse happens inside the source write's transaction, so a
+  record holding a base64 blob, a hash or any long unbroken run would have rolled the
+  write back. `SearchCore.Pipeline` now drops such tokens (`:max_bytes`, default 2046) on
+  both the indexing and the querying side, matching what `to_tsvector` always did.
+
+### Upgrade notes
+
+- One migration (`mix ash_postgres.generate_migrations`): the new index columns, the GIN
+  index rebuilt on the new expression, plus any column you add for `index_attribute`.
+- Reindex per tenant afterwards. Search keeps working throughout, so it can be done
+  progressively — only ranking is flat until a row is rebuilt.
+- Custom SQL written against `to_tsvector('simple', search_text)` must switch to the
+  `search_text::tsvector` cast.
+- A hand-defined `:upsert` action on your index must accept the new attributes (the
+  generated one now accepts every public writable attribute, so it needs no edit).
+
 ## 0.3.1
 
 ### Fixed
