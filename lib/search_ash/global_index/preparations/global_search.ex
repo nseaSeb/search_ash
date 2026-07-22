@@ -19,6 +19,20 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
 
   alias SearchAsh.GlobalIndex.Info
 
+  # Shortest term the `fuzzy?` substring branch (`label_normalized LIKE '%term%'`) will
+  # run for. Not a taste setting — it is where the mechanism stops working. A trigram
+  # *is* three characters, so `pg_trgm` cannot serve a shorter pattern from its index at
+  # all, and the pattern is simultaneously at its broadest. Measured on a 20k-row table
+  # of realistic labels:
+  #
+  #     '%vi%'   → 13333 rows (66%), Seq Scan          -- unbounded, unindexed
+  #     '%vis%'  →  6666 rows (33%), Bitmap Index Scan
+  #     '%0012%' →  3334 rows (17%), Bitmap Index Scan
+  #
+  # The similarity branch needs no such guard: it is bounded by `fuzzy_threshold`, and
+  # a 2-character term scored below it on every one of those 20k rows.
+  @min_substring_length 3
+
   @impl true
   def prepare(query, _opts, _context) do
     term = Ash.Query.get_argument(query, :query)
@@ -94,7 +108,39 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
   # anyone to change a database-wide setting.
   #
   # The LIKE pattern escapes `\ % _` so a literal in the query stays a literal.
+  #
+  # Below `@min_substring_length` the substring branch is dropped — see the note on the
+  # attribute. The other two branches stay: a short term is still matched by the tsquery
+  # as a prefix (`vi:*`, index-served), so `vi` keeps finding a *word* starting with "vi";
+  # it just stops dragging in every label that contains those letters somewhere.
   defp filter_match(query, search_text_attribute, tsquery, folded, threshold) do
+    if String.length(folded) < @min_substring_length do
+      filter_fuzzy(query, search_text_attribute, tsquery, folded, threshold)
+    else
+      filter_fuzzy_with_substring(query, search_text_attribute, tsquery, folded, threshold)
+    end
+  end
+
+  defp filter_fuzzy(query, search_text_attribute, tsquery, folded, threshold) do
+    Ash.Query.filter(
+      query,
+      fragment(
+        "(?::tsvector @@ to_tsquery('simple', ?) OR (? % ? AND similarity(?, ?) >= ?))",
+        ^ref(search_text_attribute),
+        ^tsquery,
+        ^ref(:label_normalized),
+        ^folded,
+        ^ref(:label_normalized),
+        ^folded,
+        ^threshold
+      )
+    )
+  end
+
+  defp filter_fuzzy_with_substring(query, search_text_attribute, tsquery, folded, threshold) do
+    # `filter_match/5` has already gated on length ≥ @min_substring_length, and it gates on
+    # `folded` rather than on this pattern on purpose: `escape_like/1` inflates the pattern
+    # with backslashes, so measuring it would let a 2-character term through.
     pattern = "%" <> escape_like(folded) <> "%"
 
     Ash.Query.filter(

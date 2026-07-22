@@ -53,7 +53,7 @@ defmodule SearchDemo.Search.Document do
 
   global_index do
     default_language :fr
-    # Typo tolerance on the label (duont → Dupont, 12 → BL-…-0012), served by a trigram
+    # Typo tolerance on the label (duont → Dupont, 0012 → BL-…-0012), served by a trigram
     # GIN index. Needs "pg_trgm" in the repo's installed_extensions.
     fuzzy? true
   end

@@ -45,7 +45,7 @@ defmodule SearchAsh.GlobalIndex do
   ## Typo tolerance (`fuzzy?`)
 
   `fuzzy? true` additionally matches the *normalized label* by trigram similarity and
-  substring — `duont` finds `Dupont`, `12` finds `BL-2024-0012` — served by one trigram
+  substring — `duont` finds `Dupont`, `0012` finds `BL-2024-0012` — served by one trigram
   GIN index, with fuzzy-only matches ranking behind full-text ones. It is opt-in because
   it needs the `pg_trgm` extension: add `"pg_trgm"` to your repo's
   `installed_extensions` before generating migrations. Without the option nothing
@@ -66,6 +66,14 @@ defmodule SearchAsh.GlobalIndex do
   (0.3 by default) does nothing**: the trigram operator that the index can answer filters
   against that setting first, and this option only tightens what survives. To match more
   loosely than the database allows, raise the database setting.
+
+  The **substring** half is skipped for terms shorter than three characters. A trigram is
+  three characters, so `pg_trgm` cannot serve a shorter pattern from its index: `'%vi%'`
+  matched 66% of a 20k-row table in a sequential scan, while the similarity half — bounded
+  by `fuzzy_threshold` — matched none of it. Short terms are still matched as a *prefix*
+  by the full-text half, so `vi` finds `Vidange` but no longer every label that merely
+  contains those letters. A two-character reference fragment is the one thing this gives
+  up; `001` still reaches `BL-2024-0012`.
 
   Source resources feed it with the `SearchAsh.Source` extension. Existing data is
   backfilled with `SearchAsh.reindex/2`, and a single row is reconciled after a write that
@@ -147,9 +155,10 @@ defmodule SearchAsh.GlobalIndex do
         default: false,
         doc:
           "Also match the *label* by trigram similarity and substring (typo tolerance: " <>
-            "`duont` finds `Dupont`, `12` finds `BL-2024-0012`), backed by a trigram GIN " <>
-            "index. Requires the `pg_trgm` extension — add `\"pg_trgm\"` to your repo's " <>
-            "`installed_extensions` before generating migrations."
+            "`duont` finds `Dupont`, `0012` finds `BL-2024-0012`), backed by a trigram " <>
+            "GIN index. Substring matching is skipped below three characters, the width " <>
+            "of a trigram. Requires the `pg_trgm` extension — add `\"pg_trgm\"` to your " <>
+            "repo's `installed_extensions` before generating migrations."
       ],
       fuzzy_threshold: [
         type: :float,

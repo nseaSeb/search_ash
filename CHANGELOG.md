@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.2
+
+### Fixed
+
+- **`fuzzy?`'s substring match swept the whole table on short queries.** The
+  `label_normalized LIKE '%term%'` branch had neither a similarity floor nor a minimum
+  length, unlike the trigram branch next to it. A two-character query was therefore both
+  the broadest and the most expensive one possible: measured on a 20k-row table of
+  realistic labels, `'%vi%'` matched **66% of rows in a sequential scan**, while the
+  similarity branch — bounded by `fuzzy_threshold` — matched none of them. A trigram is
+  three characters wide, so `pg_trgm` cannot serve a shorter pattern from its index at
+  all; the noise and the cost arrived together.
+
+  The substring branch is now skipped below three characters. The other two are untouched:
+  a short term is still matched as a *prefix* by full text (`vi` finds `Vidange`) and by
+  trigram similarity. What it stops doing is returning every label that merely contains
+  those two letters somewhere.
+
+  **Observable change:** reaching a reference by a fragment now needs three characters —
+  `001` finds `BL-2024-0012`, `12` no longer does. Nothing else about `fuzzy?` changes,
+  and indexes and data are unaffected — no reindex, no migration.
+
 ## 0.4.1
 
 ### Fixed

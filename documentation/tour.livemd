@@ -384,7 +384,10 @@ whatever you set the threshold to.
 search.("0012")
 ```
 
-A fragment of a reference works too, through the substring channel.
+A fragment of a reference works too, through the substring channel — from three
+characters up. A trigram is three characters wide, so below that the pattern cannot be
+index-served and would match two letters anywhere in every label; the full-text prefix
+match still covers short terms.
 
 ## Filter and sort on a real column
 

@@ -142,9 +142,10 @@ There are four classes and no more — a tsvector stores two bits of weight per 
 ### Typo tolerance
 
 `fuzzy? true` matches the normalized label by trigram similarity and substring: `duont`
-finds `Dupont`, `12` finds `BL-2024-0012`. `fuzzy_threshold` (default `0.35`) tunes how
+finds `Dupont`, `0012` finds `BL-2024-0012`. `fuzzy_threshold` (default `0.35`) tunes how
 close is close enough; lowering it below your database's `pg_trgm.similarity_threshold`
-does nothing.
+does nothing. Substring matching is skipped below three characters — the width of a
+trigram, and the point below which the pattern cannot be index-served.
 
 ### Text from related records
 

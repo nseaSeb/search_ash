@@ -124,8 +124,13 @@ The **ranking** is a composite sort:
 
 With **`fuzzy? true`** (opt-in, requires `pg_trgm`), the filter also accepts a
 trigram-similarity or substring match on `label_normalized` (`duont` → `Dupont`,
-`12` → `BL-2024-0012`), both served by one trigram GIN index. Fuzzy-only matches
+`0012` → `BL-2024-0012`), both served by one trigram GIN index. Fuzzy-only matches
 carry `ts_rank` 0, so they naturally rank behind full-text matches.
+
+The substring branch is skipped below three characters — the width of a trigram, and so
+the point below which `pg_trgm` cannot serve the pattern from the index at all. Shorter
+terms keep their full-text prefix match and their similarity match; they lose only the
+scan that would have matched two letters anywhere in every label.
 
 ## The index table
 

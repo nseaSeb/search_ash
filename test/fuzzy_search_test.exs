@@ -77,6 +77,44 @@ defmodule SearchAsh.FuzzySearchTest do
     assert fsearch("up_nt") == []
   end
 
+  describe "the substring branch is bounded by a minimum length" do
+    # Ungated, `LIKE '%vi%'` matched 66% of a 20k-row table in a sequential scan —
+    # pg_trgm cannot index a pattern shorter than one trigram. Short queries were where
+    # fuzzy? was noisiest *and* slowest at once.
+
+    test "a 2-character term no longer sweeps every label containing those letters" do
+      Domain.create_contact!(%{name: "Service après-vente", ref: "S1"})
+      Domain.create_contact!(%{name: "Avis client", ref: "A1"})
+      Domain.create_contact!(%{name: "Vidange moteur", ref: "V1"})
+
+      # None of these three is a *word* starting with "vi" — they only contain it.
+      assert fsearch("vi") |> Enum.map(& &1.label) == ["Vidange moteur"]
+    end
+
+    test "…but the term still matches as a prefix, so it is not made sterile" do
+      # The gate drops the substring branch only. FTS prefix matching is untouched,
+      # so a short query keeps finding words that begin with it.
+      Domain.create_contact!(%{name: "Vidange moteur", ref: "V1"})
+      Domain.create_contact!(%{name: "Service après-vente", ref: "S1"})
+
+      assert [%{label: "Vidange moteur"}] = fsearch("vi")
+    end
+
+    test "3 characters — the trigram boundary — still matches by substring" do
+      Domain.create_contact!(%{name: "Service après-vente", ref: "S1"})
+
+      # "vic" begins no word in the label; only the substring branch can reach it.
+      assert [%{label: "Service après-vente"}] = fsearch("vic")
+    end
+
+    test "a short reference fragment: 001 reaches BL-2024-0012, 12 does not" do
+      Domain.create_contact!(%{name: "BL-2024-0012", ref: "bon"})
+
+      assert [%{label: "BL-2024-0012"}] = fsearch("001")
+      assert fsearch("12") == []
+    end
+  end
+
   test "a tokenless query returns nothing, even with fuzzy on" do
     Domain.create_contact!(%{name: "Dupont de la Vega", ref: "C1"})
 

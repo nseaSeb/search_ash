@@ -90,7 +90,8 @@ end
 
 **Turn `fuzzy?` on.** It costs one extra index and it is what makes `duont` find `Dupont`
 and `0012` find `BL-2024-0012`. Leave it off only if you cannot add the `pg_trgm`
-extension.
+extension. Substring matching needs at least three characters — the width of a trigram —
+so plan on users typing `001`, not `12`, to reach a reference by fragment.
 
 ## 3. Feed it from each source
 
