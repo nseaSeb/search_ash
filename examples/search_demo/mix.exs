@@ -33,7 +33,7 @@ defmodule SearchDemo.MixProject do
       {:simple_sat, "~> 0.1"},
       {:ash_postgres, "~> 2.10"},
       # GreenAsh: a terminal-style admin console over the Ash resources (dev only).
-      {:green_ash, "~> 0.1"},
+      {:green_ash, "~> 0.3"},
       {:phoenix, "~> 1.7"},
       {:phoenix_live_view, "~> 1.0"},
       {:ash_phoenix, "~> 2.0"},
