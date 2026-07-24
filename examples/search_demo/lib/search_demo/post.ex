@@ -28,8 +28,13 @@ defmodule SearchDemo.Post do
   search do
     fields [:title, :body]
     language_attribute :language
-    # Synonymes aussi sur la recherche par-ressource : "canasson" (argot) atteint "cheval".
-    synonyms %{fr: %{"canasson" => ["cheval"]}}
+    # Synonymes aussi sur la recherche par-ressource, per-language : en français "canasson"
+    # (argot) atteint "cheval" ; en anglais "cat" atteint "kitten". Le dictionnaire est le
+    # tien — rien de sémantique — et à sens unique (taper "kitten" ne trouve pas "cat").
+    synonyms %{
+      fr: %{"canasson" => ["cheval"]},
+      en: %{"cat" => ["kitten"]}
+    }
   end
 
   actions do

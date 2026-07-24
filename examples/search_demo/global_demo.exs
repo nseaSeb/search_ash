@@ -292,7 +292,11 @@ _ = juin
 # valeur multi-mots devient l'AND-group `(bon & livraison)`, une facture qui ne dit QUE
 # "livraison" (F-001) n'est volontairement pas prise.
 Sales.create_facture!(
-  %{numero: "F-777", client_nom: "Transporteur", description: "Bon de livraison signé à la réception."},
+  %{
+    numero: "F-777",
+    client_nom: "Transporteur",
+    description: "Bon de livraison signé à la réception."
+  },
   tenant: "org_a"
 )
 

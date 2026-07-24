@@ -35,6 +35,12 @@ posts = [
      language: :en,
      title: "Running",
      body: "She was running fast and the connections finally worked."
+   }},
+  {"org_b",
+   %{
+     language: :en,
+     title: "Kittens",
+     body: "A litter of playful kittens asleep in a basket."
    }}
 ]
 
@@ -87,6 +93,15 @@ check.(
   ~s|org_a synonyme "canasson" -> "Les chevaux"|,
   SearchDemo.Blog.search_posts!("canasson", :fr, tenant: "org_a"),
   ["Les chevaux"]
+)
+
+# Synonyme EN : "cat" atteint "kitten". "cat" n'est PAS dans le texte du post — seul le
+# synonyme `%{en: %{"cat" => ["kitten"]}}` l'y mène. À sens unique : "kitten" ne trouve pas
+# un post qui ne dirait que "cat" (il faudrait ajouter l'entrée inverse).
+check.(
+  ~s|org_b EN synonyme "cat" -> "Kittens"|,
+  SearchDemo.Blog.search_posts!("cat", :en, tenant: "org_b"),
+  ["Kittens"]
 )
 
 # Confirm the generated change stemmed at write time.
