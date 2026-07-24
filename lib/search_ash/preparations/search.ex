@@ -23,7 +23,12 @@ defmodule SearchAsh.Preparations.Search do
       query
     else
       language = normalize_language(Ash.Query.get_argument(query, :language), resource)
-      tsquery = SearchCore.tsquery(term, language, prefix: SearchAsh.Info.prefix?(resource))
+
+      tsquery =
+        SearchCore.tsquery(term, language,
+          prefix: SearchAsh.Info.prefix?(resource),
+          synonyms: SearchAsh.Info.synonyms(resource, language)
+        )
 
       if tsquery == "" do
         Ash.Query.filter(query, false)

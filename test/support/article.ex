@@ -21,6 +21,9 @@ defmodule SearchAsh.Test.Article do
     language_attribute :language
     # A hit in the title outranks the same hit in the body.
     weights %{title: :a}
+    # Query-time synonym expansion (inline per-language form). Keys chosen so no other
+    # per-resource search test queries them, so expansion stays inert everywhere else.
+    synonyms %{fr: %{"bl" => ["bon de livraison"], "cde" => ["commande"]}}
   end
 
   actions do

@@ -43,4 +43,11 @@ defmodule SearchAsh.Info do
 
   @doc "Whether results are ranked by ts_rank (and the :search_rank calc is exposed)."
   def rank?(resource), do: Extension.get_opt(resource, [:search], :rank?, true)
+
+  @doc """
+  Synonym map to expand the query with for `language` (see `SearchAsh.Synonyms.resolve/2`).
+  `%{}` when unset, so callers can pass the result straight to `SearchCore.tsquery/3`.
+  """
+  def synonyms(resource, language),
+    do: resource |> Extension.get_opt([:search], :synonyms, nil) |> SearchAsh.Synonyms.resolve(language)
 end

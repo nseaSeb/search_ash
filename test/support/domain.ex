@@ -13,6 +13,14 @@ defmodule SearchAsh.Test.Domain do
       define(:global_search, action: :global_search, args: [:query, :language])
     end
 
+    # Only `SearchAsh.GlobalIndex.Info.synonyms/2` reads this one's DSL (the MFA form); it
+    # is never queried, so it needs no code interface and no table.
+    resource SearchAsh.Test.SynonymMfaDocument
+
+    # Same, for the per-resource side: `SearchAsh.Info.synonyms/2` reads the MFA form. Never
+    # queried, no table.
+    resource SearchAsh.Test.SynonymMfaArticle
+
     resource SearchAsh.Test.Product do
       define(:create_product, action: :create)
       define(:update_product, action: :update)

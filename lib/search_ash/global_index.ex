@@ -150,6 +150,22 @@ defmodule SearchAsh.GlobalIndex do
             "classes and no more — a tsvector stores two bits of weight per lexeme — so " <>
             "fields are assigned to classes with `weights`, and the classes are priced here."
       ],
+      synonyms: [
+        type: SearchAsh.Synonyms.type_spec(),
+        required: false,
+        doc:
+          "Query-time expansion so a typed abbreviation also matches the words it stands " <>
+            "for (`bl` finds `bon de livraison`). Either an inline map keyed by ISO base " <>
+            "language (so `:en` also covers `:en_porter`) — " <>
+            "`%{fr: %{\"bl\" => [\"bon de livraison\"]}}` — or a `{Module, :function}` " <>
+            "returning that inner map for the base language, called on each search so a " <>
+            "domain expert edits them without a deploy (keep it fast). Keys and values run " <>
+            "through the same pipeline as the query, so a key matches however it was typed " <>
+            "(`BL`/`bl`) and a multi-word value becomes an AND-group. Single-token keys " <>
+            "only; one-way (add both entries for symmetry); off when unset. It widens the " <>
+            "query, so more rows are scored — the same precision trade-off as `fuzzy?` — " <>
+            "and it does not affect `label_match_tier`, which compares the raw label."
+      ],
       fuzzy?: [
         type: :boolean,
         default: false,

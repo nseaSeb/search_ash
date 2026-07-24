@@ -286,6 +286,36 @@ check.("search_text stocke un tsvector pondéré", f_juin.search_text =~ ~r/:\d+
 
 _ = juin
 
+# 0.5.0 — synonymes : une abréviation tapée dans la barre atteint les mots qu'elle désigne,
+# par expansion à la REQUÊTE (un ajout au dictionnaire prend effet sans reindex). `bl` n'est
+# un token stocké nulle part ; seul le synonyme `bon de livraison` l'y mène — et comme la
+# valeur multi-mots devient l'AND-group `(bon & livraison)`, une facture qui ne dit QUE
+# "livraison" (F-001) n'est volontairement pas prise.
+Sales.create_facture!(
+  %{numero: "F-777", client_nom: "Transporteur", description: "Bon de livraison signé à la réception."},
+  tenant: "org_a"
+)
+
+Sales.create_facture!(
+  %{numero: "F-888", client_nom: "Atelier", description: "Commande urgente à préparer."},
+  tenant: "org_a"
+)
+
+check.(
+  ~s|synonyme multi-mots : "bl" trouve la facture disant "bon de livraison"|,
+  Enum.map(search.("bl", "org_a", admin), & &1.label) == ["F-777"]
+)
+
+check.(
+  ~s|précision de l'AND-group : "bl" n'attrape PAS F-001, qui ne dit que "livraison"|,
+  "F-001" not in Enum.map(search.("bl", "org_a", admin), & &1.label)
+)
+
+check.(
+  ~s|synonyme mono-token : "cde" trouve la facture disant "commande"|,
+  Enum.map(search.("cde", "org_a", admin), & &1.label) == ["F-888"]
+)
+
 # Tab badges, without a second search.
 counts = SearchAsh.counts_by_type(Document, "chevaux", tenant: "org_a", actor: admin)
 IO.puts("\ncounts_by_type(\"chevaux\") -> #{inspect(counts)}")

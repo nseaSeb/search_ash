@@ -1,7 +1,7 @@
 defmodule SearchAsh.MixProject do
   use Mix.Project
 
-  @version "0.4.2"
+  @version "0.5.0"
   @source_url "https://github.com/nseaSeb/search_ash"
 
   def project do
@@ -53,7 +53,7 @@ defmodule SearchAsh.MixProject do
     if System.get_env("SEARCH_ASH_LOCAL_CORE") in ~w(1 true) do
       {:search_core, path: "../search_core", override: true}
     else
-      {:search_core, "~> 0.3"}
+      {:search_core, "~> 0.4"}
     end
   end
 

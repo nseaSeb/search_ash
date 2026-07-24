@@ -81,6 +81,14 @@ check.(
   []
 )
 
+# Synonymes (0.5.0) : "canasson" (argot) atteint "cheval" par expansion à la requête —
+# `canasson` n'est stocké nulle part, seul le synonyme y mène.
+check.(
+  ~s|org_a synonyme "canasson" -> "Les chevaux"|,
+  SearchDemo.Blog.search_posts!("canasson", :fr, tenant: "org_a"),
+  ["Les chevaux"]
+)
+
 # Confirm the generated change stemmed at write time.
 post =
   Post

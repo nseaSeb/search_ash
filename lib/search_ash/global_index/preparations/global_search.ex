@@ -61,7 +61,12 @@ defmodule SearchAsh.GlobalIndex.Preparations.GlobalSearch do
     else
       resource = query.resource
       language = normalize_language(Ash.Query.get_argument(query, :language), resource)
-      tsquery = SearchCore.tsquery(term, language, prefix: true)
+
+      tsquery =
+        SearchCore.tsquery(term, language,
+          prefix: true,
+          synonyms: Info.synonyms(resource, language)
+        )
 
       # A non-blank term that yields no tokens ("de", "a x") means the user searched
       # for something unsearchable — return nothing, never the whole base.

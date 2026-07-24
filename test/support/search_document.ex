@@ -22,6 +22,10 @@ defmodule SearchAsh.Test.SearchDocument do
     # each source's call; what a class is WORTH belongs here, or ranks from different
     # entity types would not be comparable.
     weight_values %{b: 0.9}
+    # Query-time synonym expansion (inline per-language form). Keys chosen so no other
+    # global-search test queries them: expansion only fires for a query token that hits a
+    # key, so this leaves every other test's matches untouched.
+    synonyms %{fr: %{"bl" => ["bon de livraison"], "cde" => ["commande"]}}
   end
 
   attributes do

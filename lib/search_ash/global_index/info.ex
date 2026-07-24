@@ -19,4 +19,14 @@ defmodule SearchAsh.GlobalIndex.Info do
   @doc "Minimum trigram similarity for a fuzzy label match."
   def fuzzy_threshold(resource),
     do: Extension.get_opt(resource, [:global_index], :fuzzy_threshold, 0.35)
+
+  @doc """
+  Synonym map to expand the query with for `language` (see `SearchAsh.Synonyms.resolve/2`).
+  `%{}` when unset, so callers can pass the result straight to `SearchCore.tsquery/3`.
+  """
+  def synonyms(resource, language),
+    do:
+      resource
+      |> Extension.get_opt([:global_index], :synonyms, nil)
+      |> SearchAsh.Synonyms.resolve(language)
 end

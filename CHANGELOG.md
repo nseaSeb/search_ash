@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- **Query-time synonym expansion** — a new `synonyms` option on both `global_index do … end`
+  and the per-resource `search do … end`. A typed abbreviation also matches the words it
+  stands for (`bl` finds `bon de livraison`), expanded into the tsquery at **search time**, so
+  an edited map takes effect on the next search — no reindex. Either an inline per-language map
+  keyed by ISO code, `%{fr: %{"bl" => ["bon de livraison"]}}`, or a `{Module, :function}`
+  returning that inner map for a language, so a domain expert can edit synonyms without a
+  deploy. Keys and values run through the same pipeline as the query, so a key matches however
+  it was typed (`BL`/`bl`) and a multi-word value becomes an AND-group
+  (`(bl | (bon & livraison))`). Single-token keys only; one-way (add both entries for
+  symmetry); off by default. On the global index it does **not** affect label ranking
+  (`label_match_tier` / `fuzzy?`), which compares the raw label — synonyms widen *what*
+  matches, not *how* labels rank.
+
+### Changed
+
+- Requires **search_core ~> 0.4** for the `SearchCore.tsquery/3` `:synonyms` option.
+- **Memory fix, via search_core 0.4.0:** `SearchCore.highlight/4` no longer lets a
+  highlighted fragment pin the whole source text in memory. If you render match highlights
+  and keep the segments (or just the `:match` words) in long-lived state — a LiveView assign
+  of results — a long matched token would previously have retained the entire source through
+  a ref-counted sub-binary; the fragments are now copied off the input. Output is unchanged.
+  (search_ash itself does not call `highlight/4`; its stored `excerpt` was never affected.)
+  See search_core's 0.4.0 changelog.
+
 ## 0.4.2
 
 ### Fixed

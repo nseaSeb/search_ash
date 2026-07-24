@@ -56,6 +56,11 @@ defmodule SearchDemo.Search.Document do
     # Typo tolerance on the label (duont → Dupont, 0012 → BL-…-0012), served by a trigram
     # GIN index. Needs "pg_trgm" in the repo's installed_extensions.
     fuzzy? true
+    # Synonymes : les abréviations métier tapées dans la barre de recherche atteignent les
+    # mots qu'elles désignent. Expansion à la requête (un ajout prend effet sans reindex),
+    # à travers le même pipeline — donc `de` (mot vide) disparaît et "bon de livraison"
+    # devient l'AND-group `(bon & livraison)`.
+    synonyms %{fr: %{"bl" => ["bon de livraison"], "cde" => ["commande"]}}
   end
 
   policies do

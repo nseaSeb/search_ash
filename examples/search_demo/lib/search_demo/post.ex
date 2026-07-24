@@ -28,6 +28,8 @@ defmodule SearchDemo.Post do
   search do
     fields [:title, :body]
     language_attribute :language
+    # Synonymes aussi sur la recherche par-ressource : "canasson" (argot) atteint "cheval".
+    synonyms %{fr: %{"canasson" => ["cheval"]}}
   end
 
   actions do
