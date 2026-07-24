@@ -1,70 +1,13 @@
-# Roadmap
+# Design notes & non-goals
 
-What is deliberately not built yet, why, and — where the shape is already settled — how it
-would be built. Also what was **refused**, since "why we said no" is the part that gets
-relitigated.
+Where the design stands on what is **not built yet** — the reasoning, the trade-offs, and
+what was **refused**. This is not a roadmap: no dates, no commitments. It records *how we
+think about* each direction so the decisions don't get relitigated; some of these may never
+ship.
 
-The goal that orders this list: cover what the global search of a business application
-actually needs — without a separate search service to run, and with an index that lives in
-the same transaction as your data.
-
----
-
-## Synonyms
-
-**The need.** Users type `BL`, the documents say `bon de livraison`. Abbreviations,
-internal jargon, product codes. Today neither full-text (different lexemes) nor `fuzzy?`
-(trigram distance far too large) bridges that.
-
-**The shape, settled:**
-
-```elixir
-global_index do
-  synonyms %{fr: %{"bl" => ["bon de livraison"], "cde" => ["commande"]}}
-  # or, to let a domain expert edit them without a deploy:
-  synonyms {MyApp.Search, :synonyms}     # -> fun(language) :: %{String.t() => [String.t()]}
-end
-```
-
-### Expansion happens at QUERY time, not at index time
-
-The decision that matters. Expanding at index time (storing `bon livraison` into the
-`search_text` of every row whose text says `bl`) would mean **a full reindex of every
-tenant every time someone edits the map** — and would inflate `search_text` and blur
-`excerpt`. Expanding at query time makes an edit take effect on the next search, at the
-cost of a slightly larger `tsquery`. Synonyms are the kind of thing a domain expert tunes
-repeatedly; paying a full reindex per edit would make them unusable in practice.
-
-### The expansion goes through the same pipeline
-
-`"bon de livraison"` must be tokenized, stopworded, stemmed and accent-folded exactly like
-indexed text, or it cannot match what is stored — `de` is a stopword, so the value becomes
-`["bon", "livraison"]`. This is the same index/query symmetry that `searchable_text` and
-`tsquery` already guarantee, applied to a third channel; the synonym values must never be
-injected raw.
-
-A multi-word value therefore becomes an AND-group inside an OR:
-
-```
-query "bl dupont"  ->  (bl | (bon & livraison)) & dupont
-```
-
-which means `SearchCore.Tsvector.tsquery/3` has to learn parentheses — it currently emits a
-flat `a & b`. That is the one non-trivial piece of work.
-
-### Deliberate limits
-
-- **Single-token keys only.** `%{"bl" => …}` matches however it was typed (lookup happens
-  on the *processed* token, so `BL`/`bl`/`Bl` all hit). A multi-word *key* would require
-  phrase detection in the query — much harder, and abbreviations are the 90% case.
-- **One-way.** `"bl" => ["bon de livraison"]` does not imply the reverse. Someone wanting
-  symmetry adds both entries. Predictable beats clever.
-- **Per language**, keyed like everything else in the stack by ISO code.
-- **Off by default.** Expansion widens the query, so more rows get scored (see the
-  `ts_rank` note below) and precision drops — the same trade-off `fuzzy?` makes.
-- **Does not affect label ranking.** `label_match_tier` and `fuzzy?` compare the raw
-  normalized label, so a synonym will not make `bl` reach tier 0 on a label reading
-  `Bon de livraison 12`. Synonyms widen *what matches*, not *how labels rank*.
+What orders the list: cover what the global search of a business application actually needs
+— without a separate search service to run, and with an index that lives in the same
+transaction as your data.
 
 ---
 
