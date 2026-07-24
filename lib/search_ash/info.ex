@@ -49,5 +49,8 @@ defmodule SearchAsh.Info do
   `%{}` when unset, so callers can pass the result straight to `SearchCore.tsquery/3`.
   """
   def synonyms(resource, language),
-    do: resource |> Extension.get_opt([:search], :synonyms, nil) |> SearchAsh.Synonyms.resolve(language)
+    do:
+      resource
+      |> Extension.get_opt([:search], :synonyms, nil)
+      |> SearchAsh.Synonyms.resolve(language)
 end

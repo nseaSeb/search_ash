@@ -11,6 +11,7 @@ spark_locals_without_parens = [
   fuzzy_threshold: 1,
   index: 1,
   index_attribute: 2,
+  index_attribute: 3,
   index_name: 1,
   label_field: 1,
   language: 1,
@@ -21,6 +22,8 @@ spark_locals_without_parens = [
   rank?: 1,
   search_text_attribute: 1,
   source_type: 1,
+  synonyms: 1,
+  weight: 1,
   weight_values: 1,
   weights: 1
 ]
