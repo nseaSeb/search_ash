@@ -63,3 +63,39 @@ jobs:
 
       - name: Test
         run: mix test
+
+  # The example is a separate mix project (own deps + formatter config) and the root job's
+  # `mix format` only covers config/lib/test, so example scripts could drift out of format
+  # unnoticed. It depends on search_core as a sibling path, so check it out alongside; format
+  # only needs deps *fetched* (for import_deps), not compiled, so no Postgres and no test run.
+  format-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: search_ash
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nseaSeb/search_core
+          path: search_core
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19"
+          otp-version: "28"
+
+      - name: Cache example deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            search_ash/examples/search_demo/deps
+            search_ash/examples/search_demo/_build
+          key: ${{ runner.os }}-example-${{ hashFiles('search_ash/examples/search_demo/mix.lock') }}
+          restore-keys: ${{ runner.os }}-example-
+
+      - name: Check example formatting
+        working-directory: search_ash/examples/search_demo
+        run: |
+          mix deps.get
+          mix format --check-formatted
